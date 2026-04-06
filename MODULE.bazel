@@ -1,0 +1,18 @@
+bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "abseil-cpp", version = "20260107.1")
+
+# googletest 1.17.0 does not support bazel 9.0.
+#git_override(
+#    module_name = "googletest",
+#    branch = "main",
+#    remote = "https://github.com/google/googletest.git",
+#)
+
+# absl 20260107 does not support bazel 9.0
+#git_override(
+#    module_name = "abseil-cpp",
+#    branch = "master",
+#    remote = "https://github.com/abseil/abseil-cpp",
+#)
+

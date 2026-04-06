@@ -1,0 +1,3 @@
+# Bazel 9 is really broken with all Google libs.
+USE_BAZEL_VERSION=8.6.0
+
