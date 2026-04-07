@@ -477,7 +477,6 @@ absl::Status EvaluateStep(const GateNetwork& net,
         continue;
       }
 
-
       auto inserted = seen.insert(output).second;
       if (!inserted) {
         if (state[output] == *val) continue;
@@ -499,6 +498,8 @@ absl::Status EvaluateStep(const GateNetwork& net,
     }
   }
 
+  state[kLowGate] = false;
+  state[kHighGate] = true;
   while (!queue.empty()) {
     auto next = queue.front();
     queue.pop_front();

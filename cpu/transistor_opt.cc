@@ -6,9 +6,7 @@
 
 #include "transistor_lib.h"
 
-bool RunCse(Network& net, int max_iters) {
-  return true;
-}
+bool RunCse(Network& net, int max_iters) { return true; }
 
 bool RunDte(Network& net) {
   Network repl;

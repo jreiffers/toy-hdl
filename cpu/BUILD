@@ -41,7 +41,7 @@ cc_test(
 
 cc_library(
     name = "cpu_modules",
-    hdrs = ["alu.h", "pc_gen.h"],
+    hdrs = ["alu.h", "pc_gen.h", "register_file.h"],
     deps = [":gate_lib"],
 )
 
@@ -110,7 +110,7 @@ cc_library(
 
 cc_test(
     name = "cpu_modules_test",
-    srcs = ["alu_test.cc", "pcgen_test.cc"],
+    srcs = ["alu_test.cc", "pcgen_test.cc", "register_file_test.cc"],
     deps = [
         ":cpu_modules",
         ":eval",

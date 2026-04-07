@@ -54,4 +54,17 @@ absl::Status EvaluateStep(const GateNetwork& net,
                           std::unordered_map<GateTerminal, bool>& state,
                           absl::Span<const uint32_t> inputs);
 
+template <int bw>
+uint32_t GetNum(const std::unordered_map<GateTerminal, bool>& state,
+                const GateReg<bw>& reg) {
+  static_assert(bw <= 32);
+  uint32_t res = 0;
+  for (int i = 0; i < bw; ++i) {
+    if (state.at(reg[i])) {
+      res |= 1ul << i;
+    }
+  }
+  return res;
+}
+
 #endif

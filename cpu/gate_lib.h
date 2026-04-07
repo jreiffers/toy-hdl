@@ -243,6 +243,7 @@ GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
                                      GateTerminal e);
 // Stores on falling clk edge.
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
-                                   GateTerminal clk);
+                                   GateTerminal clk,
+                                   GateTerminal reset = kLowGate);
 
 #endif
