@@ -16,6 +16,7 @@
 #include "lower_gates.h"
 #include "pc_gen.h"
 #include "print.h"
+#include "register_file.h"
 #include "transistor_lib.h"
 #include "transistor_opt.h"
 
@@ -39,8 +40,17 @@ void BuildPcGen(GateNetwork& net) {
   net.DeclareOutput(pcgen.next_pc);
 }
 
+void BuildRegister(GateNetwork& net) {
+  auto reset = net.AddInput<1>();
+  auto clk = net.AddInput<1>();
+  auto write_enable = net.AddInput<1>();
+  auto write_data = net.AddInput<4>();
+  GateReg<4> reg = MakeRegister(net, reset, clk, write_enable, write_data);
+  net.DeclareOutput(reg);
+}
+
 int print_usage() {
-  std::cerr << "usage: main [alu|pcgen]\n";
+  std::cerr << "usage: main [alu|alu2|pcgen|register]\n";
   return 1;
 }
 
@@ -58,6 +68,8 @@ int main(int argc, const char* argv[]) {
     BuildAlu<2>(net);
   } else if (mod == "pcgen") {
     BuildPcGen(net);
+  } else if (mod == "register") {
+    BuildRegister(net);
   } else {
     return print_usage();
   }

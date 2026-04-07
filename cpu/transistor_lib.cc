@@ -14,6 +14,14 @@ TransistorId Network::make_transistor(TransistorType type) {
   return TransistorId{static_cast<int>(transistors_.size()) - 1};
 }
 
+void Network::replace(NodeId from, NodeId to) {
+  auto connections = bidi_connections[from];
+  for (NodeId it : connections) {
+    disconnect(from, it);
+    connect(to, it);
+  }
+}
+
 void Network::connect(NodeId a, NodeId b) {
   bidi_connections[a].insert(b);
   bidi_connections[b].insert(a);

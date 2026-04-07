@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <set>
 #include <utility>
@@ -117,12 +118,15 @@ struct Network {
   int input_bitwidth(int index) const { return input_bitwidths_[index]; }
   absl::Span<const int> input_bitwidths() const { return input_bitwidths_; }
 
+  NodeId make_placeholder() { return NodeId(placeholder_id_++); }
+
   int num_transistors() const { return transistors_.size(); }
   TransistorId make_transistor(TransistorType type);
   TransistorType transistor_type(TransistorId id) const {
     return transistors_[id.id];
   }
 
+  void replace(NodeId from, NodeId to);
   void connect(NodeId a, NodeId b);
   void disconnect(NodeId a, NodeId b);
 
@@ -146,6 +150,7 @@ struct Network {
   std::vector<int> input_bitwidths_;
   std::vector<int> input_offsets_ = {0};
   std::vector<dyn_reg> outputs_;
+  int placeholder_id_ = std::numeric_limits<int>::min();
 };
 
 NodeId make_nand(Network& net, absl::Span<const NodeId> inputs);

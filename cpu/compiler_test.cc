@@ -26,16 +26,22 @@ absl::Status VerifyAdd1() {
                     });
 }
 
-TEST(CompilerTest, DISABLED_RegressionTestAdd1_1) {
-  ABSL_EXPECT_OK(VerifyAdd1<1>());
-}
+TEST(CompilerTest, RegressionTestAdd1_1) { ABSL_EXPECT_OK(VerifyAdd1<1>()); }
 
-TEST(CompilerTest, DISABLED_RegressionTestAdd1_2) {
-  ABSL_EXPECT_OK(VerifyAdd1<2>());
-}
+TEST(CompilerTest, RegressionTestAdd1_2) { ABSL_EXPECT_OK(VerifyAdd1<2>()); }
 
 TEST(CompilerTest, RegressionTestAdd1_3) { ABSL_EXPECT_OK(VerifyAdd1<3>()); }
 
-TEST(CompilerTest, DISABLED_RegressionTestAdd1_4) {
-  ABSL_EXPECT_OK(VerifyAdd1<4>());
+TEST(CompilerTest, RegressionTestAdd1_4) { ABSL_EXPECT_OK(VerifyAdd1<4>()); }
+
+TEST(CompilerTest, LowerFlipFlop) {
+  GateNetwork net;
+  auto d = net.AddInput<1>()[0];
+  auto clk = net.AddInput<1>()[0];
+  auto reset = net.AddInput<1>()[0];
+  auto out = MakeDFlipFlop(net, d, clk, reset);
+  net.DeclareOutput(out);
+  // Just verify this doesn't crash for now. There's no stateful transistor
+  // network evaluator yet.
+  Compile(net);
 }

@@ -9,9 +9,11 @@ Network Lower(GateNetwork& net) {
   Network result;
 
   std::unordered_map<GateTerminal, NodeId> lowered;
+  lowered[kLowGate] = kVss;
+  lowered[kHighGate] = kVdd;
 
+  // Propagate inputs.
   int num_inputs = net.input_bitwidths().size();
-
   for (int i = 0; i < num_inputs; ++i) {
     DynGateReg input = net.GetInput(i);
     dyn_reg lowered_input = result.make_input(input.bitwidth());
@@ -20,18 +22,18 @@ Network Lower(GateNetwork& net) {
     }
   }
 
-  lowered[kLowGate] = kVss;
-  lowered[kHighGate] = kVdd;
+  // Add placeholders for each gate output.
+  net.WalkUnordered([&](int, Gate& gate) {
+    for (int i = 0; i < gate.num_outputs(); ++i) {
+      lowered[gate.output(i)] = result.make_placeholder();
+    }
+  });
 
-  int depth = 0;
-  std::function<void(Gate&)> lower = [&](Gate& gate) {
-    if (lowered.count({&gate, 0})) return;
-
-    ++depth;
-
+  // Actually lower the gates.
+  std::unordered_map<NodeId, NodeId> replacements;
+  net.WalkUnordered([&](int, Gate& gate) {
     absl::InlinedVector<NodeId, 2> inputs;
     for (auto input : gate.inputs()) {
-      lower(*input.first);
       inputs.push_back(lowered.at(input));
     }
 
@@ -63,18 +65,21 @@ Network Lower(GateNetwork& net) {
     }
 
     for (int i = 0; i < gate.num_outputs(); ++i) {
-      lowered[gate.output(i)] = outputs[i];
+      auto& l = lowered[gate.output(i)];
+      replacements[l] = outputs[i];
+      l = outputs[i];
     }
+  });
 
-    --depth;
-  };
+  for (auto [from, to] : replacements) {
+    result.replace(from, to);
+  }
 
   std::vector<dyn_reg> lowered_outputs;
   for (int oi = 0; oi < net.num_outputs(); ++oi) {
     auto o = net.GetOutput(oi);
     std::vector<NodeId> ids;
     for (int i = 0; i < o.bitwidth(); ++i) {
-      lower(*o[i].first);
       ids.push_back(lowered.at(o[i]));
     }
     result.DeclareOutput(dyn_reg(std::move(ids)));
