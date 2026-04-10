@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "absl/strings/str_cat.h"
+
 std::string to_string(const Gate& gate) {
   switch (gate.kind()) {
     case GateKind::kDead:
@@ -83,9 +85,15 @@ Gate& GateNetwork::AddGate(GateKind kind,
   return gates_.emplace_back(this, kind, std::move(inputs));
 }
 
-void GateNetwork::DeclareOutput(const DynGateReg& reg) {
+void GateNetwork::DeclareOutput(const DynGateReg& reg, std::string label) {
   assert(output_offsets_.back() + reg.bitwidth() <= kMaxOutputs);
+
+  if (label.empty()) {
+    label = absl::StrCat("o", output_labels_.size());
+  }
+
   output_bitwidths_.push_back(reg.bitwidth());
+  output_labels_.push_back(std::move(label));
 
   for (int i = 0; i < reg.bitwidth(); ++i) {
     int index = output_offsets_.back() + i;

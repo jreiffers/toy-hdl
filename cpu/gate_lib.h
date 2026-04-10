@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 
 enum class GateKind {
   kDead,
@@ -119,7 +120,7 @@ struct GateNetwork {
   int num_outputs() const { return output_bitwidths_.size(); }
   int total_input_bits() const { return input_offsets_.back(); }
 
-  void DeclareOutput(const DynGateReg& reg);
+  void DeclareOutput(const DynGateReg& reg, std::string label = "");
   DynGateReg GetOutput(int index);
 
   DynGateReg GetInput(int index) const {
@@ -132,8 +133,19 @@ struct GateNetwork {
     return DynGateReg(std::move(res));
   }
 
+  const std::string& input_label(int index) const {
+    return input_labels_[index];
+  }
+  const std::string& output_label(int index) const {
+    return output_labels_[index];
+  }
+
   template <int bw>
-  GateReg<bw> AddInput() {
+  GateReg<bw> AddInput(std::string label = "") {
+    if (label.empty()) {
+      label = absl::StrCat("i", input_labels_.size());
+    }
+    input_labels_.push_back(std::move(label));
     GateReg<bw> result;
     for (int i = 0; i < bw; ++i) {
       result[i] = {nullptr, input_offsets_.back() + i};
@@ -236,6 +248,8 @@ struct GateNetwork {
 
   std::vector<int> input_bitwidths_;
   std::vector<int> input_offsets_ = {0};
+  std::vector<std::string> input_labels_;
+  std::vector<std::string> output_labels_;
   std::vector<int> output_bitwidths_;
   std::vector<int> output_offsets_ = {0};
 

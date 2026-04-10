@@ -111,11 +111,29 @@ void print_graphviz(GateNetwork& net,
     }
   });
 
+  for (int i = 0; i < net.num_inputs(); ++i) {
+    auto input = net.GetInput(i);
+    for (int b = 0; b < input.bitwidth(); ++b) {
+      std::cout << terminal_node(input[b]) << " [label = \""
+                << net.input_label(i);
+      if (input.bitwidth() > 1) {
+        std::cout << "_" << b;
+      }
+      std::cout << "\"];\n";
+    }
+  }
+
   for (int i = 0; i < net.num_outputs(); ++i) {
     auto output = net.GetOutput(i);
     for (int b = 0; b < output.bitwidth(); ++b) {
       std::cout << terminal_node(output[b]) << "->" << "o" << i << "_" << b
                 << ";\n";
+      std::cout << "o" << i << "_" << b << " [label = \""
+                << net.output_label(i);
+      if (output.bitwidth() > 1) {
+        std::cout << "_" << b;
+      }
+      std::cout << "\"];\n";
     }
   }
 

@@ -25,7 +25,10 @@ cc_library(
     name = "gate_lib",
     srcs = ["gate_lib.cc"],
     hdrs = ["gate_lib.h"],
-    deps = ["@abseil-cpp//absl/container:inlined_vector"],
+    deps = [
+      "@abseil-cpp//absl/container:inlined_vector",
+      "@abseil-cpp//absl/strings",
+    ],
 )
 
 cc_test(
