@@ -170,6 +170,8 @@ NodeId make_or(Network& net, absl::Span<const NodeId> inputs);
 NodeId make_xor(Network& net, NodeId a, NodeId b);
 NodeId make_lookup(Network& net, NodeId a, NodeId b, NodeId not_a, NodeId not_b,
                    uint32_t mask);
+NodeId make_tri_state_buffer(Network& net, NodeId enable, NodeId not_enable,
+                             NodeId data);
 
 reg<2> make_half_adder(Network& net, NodeId a, NodeId b);
 reg<2> make_full_adder(Network& net, NodeId a, NodeId b, NodeId c);

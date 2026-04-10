@@ -14,7 +14,8 @@ enum class GateKind {
   kDead,
 
   kNot,
-  kMux,  // condition, !condition, true, false
+  kTriStateBuffer,  // enable, !enable, data
+  kMux,             // condition, !condition, true, false
   kNand,
   kNor,
   kLookup,
@@ -84,7 +85,6 @@ struct GateReg {
   std::array<GateTerminal, bw> vals;
 
   GateTerminal operator[](size_t i) const { return vals[i]; }
-
   GateTerminal& operator[](size_t i) { return vals[i]; }
 };
 
@@ -198,6 +198,33 @@ struct GateNetwork {
     return out;
   }
 
+  template <int bw>
+  GateReg<bw> Xor(GateReg<bw> lhs, GateReg<bw> rhs) {
+    GateReg<bw> out;
+    for (int i = 0; i < bw; ++i) {
+      out[i] = Xor(lhs[i], rhs[i]);
+    }
+    return out;
+  }
+
+  template <int bw>
+  GateTerminal Eq(GateReg<bw> lhs, GateReg<bw> rhs) {
+    auto x = Xor(lhs, rhs);
+    return Nor(x.vals);
+  }
+
+  template <int bw>
+  GateReg<bw> TriStateBuffer(GateTerminal enable, GateReg<bw> value) {
+    auto not_enable = Not(enable);
+    GateReg<bw> out;
+    for (int i = 0; i < bw; ++i) {
+      out[i] =
+          AddGate(GateKind::kTriStateBuffer, {enable, not_enable, value[i]})
+              .output();
+    }
+    return out;
+  }
+
   void WalkUnordered(
       const std::function<void(int id, const Gate& gate)>& fn) const;
   void WalkUnordered(const std::function<void(int id, Gate& gate)>& fn);
@@ -236,11 +263,12 @@ std::pair<GateReg<bw>, GateTerminal /* carry */> MakeAdder(
 }
 
 GateReg<2> /*q, ~q*/ MakeSrLatch(GateNetwork& net, GateTerminal s,
-                                 GateTerminal r);
+                                 GateTerminal r, GateTerminal reset);
 GateReg<2> /*q, ~q*/ MakeGatedSrLatch(GateNetwork& net, GateTerminal s,
-                                      GateTerminal r, GateTerminal e);
+                                      GateTerminal r, GateTerminal e,
+                                      GateTerminal reset);
 GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
-                                     GateTerminal e);
+                                     GateTerminal e, GateTerminal reset);
 // Stores on falling clk edge.
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
                                    GateTerminal clk,

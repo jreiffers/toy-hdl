@@ -8,6 +8,8 @@ std::string to_string(const Gate& gate) {
       return "dead";
     case GateKind::kNot:
       return "not";
+    case GateKind::kTriStateBuffer:
+      return "tristate";
     case GateKind::kMux:
       return "mux";
     case GateKind::kNand:
@@ -36,8 +38,9 @@ GateReg<2> MakeFullAdder(GateNetwork& net, GateTerminal a, GateTerminal b,
   return {sum_abc, net.Or(carry_1, carry_2)};
 }
 
-GateReg<2> MakeSrLatch(GateNetwork& net, GateTerminal s, GateTerminal r) {
-  auto a = net.Nor({r, kHighGate});
+GateReg<2> MakeSrLatch(GateNetwork& net, GateTerminal s, GateTerminal r,
+                       GateTerminal reset) {
+  auto a = net.Nor({r, kHighGate, reset});
   auto b = net.Nor({s, kHighGate});
 
   a.first->SetInput(1, b);
@@ -47,24 +50,23 @@ GateReg<2> MakeSrLatch(GateNetwork& net, GateTerminal s, GateTerminal r) {
 }
 
 GateReg<2> /*q, ~q*/ MakeGatedSrLatch(GateNetwork& net, GateTerminal s,
-                                      GateTerminal r, GateTerminal e) {
-  return MakeSrLatch(net, net.And(s, e), net.And(r, e));
+                                      GateTerminal r, GateTerminal e,
+                                      GateTerminal reset) {
+  return MakeSrLatch(net, net.And(s, e), net.And(r, e), reset);
 }
 
 GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
-                                     GateTerminal e) {
-  return MakeGatedSrLatch(net, d, net.Not(d), e);
+                                     GateTerminal e, GateTerminal reset) {
+  return MakeGatedSrLatch(net, d, net.Not(d), e, reset);
 }
 
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
                                    GateTerminal clk, GateTerminal reset) {
   // TODO: The classical D flip flop should be more efficient in terms of
   // transistor use than the master-slave one.
-  // Also, there's no way this reset logic is optimal.
-  auto not_reset = net.Not(reset);
-  auto q = MakeGatedDLatch(net, net.And(d, not_reset), net.Or(clk, reset))[0];
+  auto q = MakeGatedDLatch(net, d, clk, reset)[0];
   auto not_clk = net.Not(clk);
-  return MakeGatedDLatch(net, net.And(q, not_reset), net.Or(not_clk, reset));
+  return MakeGatedDLatch(net, q, not_clk, reset);
 }
 
 constexpr int kMaxOutputs = 128;

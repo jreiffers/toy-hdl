@@ -9,16 +9,34 @@ struct RegisterFile {
 };
 
 template <int bw>
-GateReg<bw> MakeRegister(GateNetwork& net, GateReg<1> reset, GateReg<1> clk,
-                         GateReg<1> write_enable, GateReg<bw> write_data) {
-  GateReg<bw> muxes = net.Mux(write_enable[0], write_data, write_data);
+struct RegisterOutput {
+  // Outputs will be hi-z if the register isn't selected for reading.
+  GateReg<bw> read_port_1;
+  GateReg<bw> read_port_2;
+};
 
-  GateReg<bw> out;
+template <int bw, int register_addr_bits>
+RegisterOutput<bw> MakeRegister(GateNetwork& net, GateReg<1> reset,
+                                GateReg<1> clk,
+                                GateReg<register_addr_bits> my_addr,
+                                GateReg<register_addr_bits> read_addr_1,
+                                GateReg<register_addr_bits> read_addr_2,
+                                GateReg<register_addr_bits> write_addr,
+                                GateReg<bw> write_data) {
+  GateTerminal write_enable = net.Eq(my_addr, write_addr);
+  GateReg<bw> muxes = net.Mux(write_enable, write_data, write_data);
+  GateReg<bw> value;
   for (int i = 0; i < bw; ++i) {
-    out[i] = MakeDFlipFlop(net, muxes[i], clk[0], reset[0])[0];
-    muxes[i].first->SetInput(3, out[i]);
+    value[i] = MakeDFlipFlop(net, muxes[i], clk[0], reset[0])[0];
+    muxes[i].first->SetInput(3, value[i]);
   }
 
+  GateTerminal read_enable_1 = net.Eq(my_addr, read_addr_1);
+  GateTerminal read_enable_2 = net.Eq(my_addr, read_addr_2);
+
+  RegisterOutput<bw> out;
+  out.read_port_1 = net.TriStateBuffer(read_enable_1, value);
+  out.read_port_2 = net.TriStateBuffer(read_enable_2, value);
   return out;
 }
 

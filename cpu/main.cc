@@ -40,13 +40,19 @@ void BuildPcGen(GateNetwork& net) {
   net.DeclareOutput(pcgen.next_pc);
 }
 
+template <int bw>
 void BuildRegister(GateNetwork& net) {
   auto reset = net.AddInput<1>();
   auto clk = net.AddInput<1>();
-  auto write_enable = net.AddInput<1>();
-  auto write_data = net.AddInput<4>();
-  GateReg<4> reg = MakeRegister(net, reset, clk, write_enable, write_data);
-  net.DeclareOutput(reg);
+  auto register_addr = net.AddInput<2>();
+  auto read_addr_1 = net.AddInput<2>();
+  auto read_addr_2 = net.AddInput<2>();
+  auto write_addr = net.AddInput<2>();
+  auto write_data = net.AddInput<bw>();
+  auto reg = MakeRegister(net, reset, clk, register_addr, read_addr_1,
+                          read_addr_2, write_addr, write_data);
+  net.DeclareOutput(reg.read_port_1);
+  net.DeclareOutput(reg.read_port_2);
 }
 
 int print_usage() {
@@ -69,7 +75,9 @@ int main(int argc, const char* argv[]) {
   } else if (mod == "pcgen") {
     BuildPcGen(net);
   } else if (mod == "register") {
-    BuildRegister(net);
+    BuildRegister<4>(net);
+  } else if (mod == "register1") {
+    BuildRegister<1>(net);
   } else {
     return print_usage();
   }

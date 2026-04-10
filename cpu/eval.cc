@@ -280,6 +280,9 @@ absl::Status VerifySpec(const GateNetwork& net,
         case GateKind::kNot:
           it->second = !get(mask, gate.input(0));
           break;
+        case GateKind::kTriStateBuffer:
+          assert(false);  // TODO support this
+          break;
         case GateKind::kNand:
           r = true;
           for (int i = 0; r && i < gate.num_inputs(); ++i) {
@@ -402,18 +405,29 @@ absl::Status VerifySpec(const GateNetwork& net,
       "Implementation does not match spec:\n", absl::StrJoin(errors, "\n")));
 }
 
-absl::Status EvaluateStep(const GateNetwork& net,
-                          std::unordered_map<GateTerminal, bool>& state,
-                          absl::Span<const uint32_t> inputs) {
+absl::Status EvaluateStep(
+    const GateNetwork& net,
+    std::unordered_map<GateTerminal, GateTerminalState>& state,
+    absl::Span<const uint32_t> inputs) {
   if (inputs.size() != net.num_inputs()) {
     return absl::InvalidArgumentError("Mismatched number of inputs.");
   }
   std::unordered_set<GateTerminal> seen;
   std::deque<GateTerminal> queue;
 
-  auto compute_value = [&](GateTerminal terminal) -> std::optional<bool> {
-    if (terminal == kLowGate) return false;
-    if (terminal == kHighGate) return true;
+  using GateTerminalState::kHigh;
+  using GateTerminalState::kLow;
+  using GateTerminalState::kZ;
+
+  auto cvt = [](std::optional<bool> v) -> std::optional<GateTerminalState> {
+    if (!v) return std::nullopt;
+    return static_cast<GateTerminalState>(*v);
+  };
+
+  auto compute_value =
+      [&](GateTerminal terminal) -> std::optional<GateTerminalState> {
+    if (terminal == kLowGate) return kLow;
+    if (terminal == kHighGate) return kHigh;
     if (terminal.first == nullptr) return state[terminal];
 
     auto& gate = *terminal.first;
@@ -426,7 +440,10 @@ absl::Status EvaluateStep(const GateNetwork& net,
       if (it == state.end()) {
         inputs.push_back(std::nullopt);
       } else {
-        inputs.push_back(it->second);
+        // Currently, we should only have high impedance values on outputs.
+        // TODO: error handling.
+        assert(it->second != kZ);
+        inputs.push_back(it->second == GateTerminalState::kHigh);
       }
     }
 
@@ -435,25 +452,35 @@ absl::Status EvaluateStep(const GateNetwork& net,
         return std::nullopt;
       case GateKind::kNot:
         if (inputs[0]) {
-          return !*inputs[0];
+          return cvt(!*inputs[0]);
         }
         return std::nullopt;
+      case GateKind::kTriStateBuffer:
+        if (!inputs[0]) return std::nullopt;
+
+        if (*inputs[0]) {
+          return cvt(inputs[2]);
+        }
+
+        return kZ;
       case GateKind::kMux:
-        if (inputs[2] == inputs[3]) return inputs[2];
+        if (inputs[2] == inputs[3]) {
+          return cvt(inputs[2]);
+        }
 
         if (!inputs[0].has_value()) {
           return std::nullopt;
         }
 
-        return *inputs[0] ? inputs[2] : inputs[3];
+        return cvt(*inputs[0] ? inputs[2] : inputs[3]);
       case GateKind::kNand:
-        if (absl::c_contains(inputs, false)) return true;
+        if (absl::c_contains(inputs, false)) return kHigh;
         if (absl::c_contains(inputs, std::nullopt)) return std::nullopt;
-        return false;
+        return kLow;
       case GateKind::kNor:
-        if (absl::c_contains(inputs, true)) return false;
+        if (absl::c_contains(inputs, true)) return kLow;
         if (absl::c_contains(inputs, std::nullopt)) return std::nullopt;
-        return true;
+        return kHigh;
       case GateKind::kLookup:
         if (absl::c_contains(inputs, std::nullopt)) return std::nullopt;
 
@@ -464,7 +491,8 @@ absl::Status EvaluateStep(const GateNetwork& net,
           }
         }
 
-        return (gate.lookup_data() >> index) & 1;
+        return static_cast<GateTerminalState>((gate.lookup_data() >> index) &
+                                              1);
     }
   };
 
@@ -492,14 +520,14 @@ absl::Status EvaluateStep(const GateNetwork& net,
   for (int i = 0; i < net.num_inputs(); ++i) {
     auto input = net.GetInput(i);
     for (int b = 0; b < input.bitwidth(); ++b) {
-      state[input[b]] = (inputs[i] >> b) & 1;
+      state[input[b]] = static_cast<GateTerminalState>((inputs[i] >> b) & 1);
       seen.insert(input[b]);
       queue.push_back(input[b]);
     }
   }
 
-  state[kLowGate] = false;
-  state[kHighGate] = true;
+  state[kLowGate] = kLow;
+  state[kHighGate] = kHigh;
   while (!queue.empty()) {
     auto next = queue.front();
     queue.pop_front();

@@ -12,7 +12,7 @@
 #include "gate_lib.h"
 #include "transistor_lib.h"
 
-enum PinState {
+enum class PinState {
   kUndefined,  // The pin is floating.
   kLow,        // The pin is driven low.
   kHigh,       // The pin is driven high.
@@ -50,17 +50,23 @@ absl::Status VerifySpec(const GateNetwork& net,
                             absl::Span<const uint32_t> inputs)>& spec);
 
 // Propagates the values of `inputs` through the network and updates `state`.
-absl::Status EvaluateStep(const GateNetwork& net,
-                          std::unordered_map<GateTerminal, bool>& state,
-                          absl::Span<const uint32_t> inputs);
+enum class GateTerminalState { kLow, kHigh, kZ };
+
+absl::Status EvaluateStep(
+    const GateNetwork& net,
+    std::unordered_map<GateTerminal, GateTerminalState>& state,
+    absl::Span<const uint32_t> inputs);
 
 template <int bw>
-uint32_t GetNum(const std::unordered_map<GateTerminal, bool>& state,
-                const GateReg<bw>& reg) {
+std::optional<uint32_t> GetNum(
+    const std::unordered_map<GateTerminal, GateTerminalState>& state,
+    const GateReg<bw>& reg) {
   static_assert(bw <= 32);
   uint32_t res = 0;
   for (int i = 0; i < bw; ++i) {
-    if (state.at(reg[i])) {
+    GateTerminalState s = state.at(reg[i]);
+    if (s == GateTerminalState::kZ) return std::nullopt;
+    if (s == GateTerminalState::kHigh) {
       res |= 1ul << i;
     }
   }

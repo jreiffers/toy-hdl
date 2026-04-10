@@ -131,6 +131,23 @@ NodeId make_lookup(Network& net, NodeId a, NodeId b, NodeId not_a, NodeId not_b,
   return o0;
 }
 
+NodeId make_tri_state_buffer(Network& net, NodeId enable, NodeId not_enable,
+                             NodeId data) {
+  NodeId data_nand_enable = make_nand(net, {data, enable});
+  NodeId not_data_and_enable = make_nor(net, {data, not_enable});
+
+  TransistorId p = net.make_transistor(TransistorType::kPChannel);
+  TransistorId n = net.make_transistor(TransistorType::kNChannel);
+
+  net.connect(p.source(), kVdd);
+  net.connect(n.source(), kVss);
+  net.connect(p.drain(), n.drain());
+  net.connect(data_nand_enable, p.gate());
+  net.connect(not_data_and_enable, n.gate());
+
+  return n.drain();
+}
+
 reg<2> make_half_adder(Network& net, NodeId a, NodeId b) {
   return {make_xor(net, a, b), make_and(net, {a, b})};
 }

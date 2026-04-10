@@ -46,6 +46,11 @@ Network Lower(GateNetwork& net) {
         assert(inputs.size() == 1);
         outputs.push_back(make_not(result, inputs[0]));
         break;
+      case GateKind::kTriStateBuffer:
+        assert(inputs.size() == 3);
+        outputs.push_back(
+            make_tri_state_buffer(result, inputs[0], inputs[1], inputs[2]));
+        break;
       case GateKind::kMux:
         assert(inputs.size() == 4);
         outputs.push_back(

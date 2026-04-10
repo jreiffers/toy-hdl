@@ -127,16 +127,18 @@ TEST(EvalTest, EvalSrLatch) {
   GateNetwork net;
   auto r = net.AddInput<1>()[0];
   auto s = net.AddInput<1>()[0];
-  GateReg<2> qnotq = MakeSrLatch(net, s, r);
+  GateReg<2> qnotq = MakeSrLatch(net, s, r, kLowGate);
   net.DeclareOutput(qnotq);
 
   auto q = qnotq[0];
   auto notq = qnotq[1];
 
-  std::unordered_map<GateTerminal, bool> state;
+  std::unordered_map<GateTerminal, GateTerminalState> state;
   auto expect_state = [&](bool qval) {
-    EXPECT_TRUE(state.count(q) && state[q] == qval);
-    EXPECT_TRUE(state.count(notq) && state[notq] == !qval);
+    EXPECT_TRUE(state.count(q) &&
+                state[q] == static_cast<GateTerminalState>(qval));
+    EXPECT_TRUE(state.count(notq) &&
+                state[notq] == static_cast<GateTerminalState>(!qval));
   };
 
   EXPECT_THAT(EvaluateStep(net, state, {1, 0}), IsOk());
@@ -158,19 +160,19 @@ TEST(EvalTest, EvalDFlipFlop) {
   auto clk = net.AddInput<1>()[0];
   auto q = MakeDFlipFlop(net, d, clk)[0];
 
-  std::unordered_map<GateTerminal, bool> state;
+  std::unordered_map<GateTerminal, GateTerminalState> state;
   EXPECT_THAT(EvaluateStep(net, state, {1, 1}), IsOk());
   EXPECT_THAT(EvaluateStep(net, state, {1, 0}), IsOk());
   ASSERT_TRUE(state.count(q) == 1);
-  EXPECT_EQ(state[q], true);
+  EXPECT_EQ(state[q], GateTerminalState::kHigh);
   EXPECT_THAT(EvaluateStep(net, state, {0, 0}), IsOk());
-  EXPECT_EQ(state[q], true);
+  EXPECT_EQ(state[q], GateTerminalState::kHigh);
   EXPECT_THAT(EvaluateStep(net, state, {1, 0}), IsOk());
-  EXPECT_EQ(state[q], true);
+  EXPECT_EQ(state[q], GateTerminalState::kHigh);
   EXPECT_THAT(EvaluateStep(net, state, {0, 0}), IsOk());
-  EXPECT_EQ(state[q], true);
+  EXPECT_EQ(state[q], GateTerminalState::kHigh);
   EXPECT_THAT(EvaluateStep(net, state, {0, 1}), IsOk());
-  EXPECT_EQ(state[q], true);
+  EXPECT_EQ(state[q], GateTerminalState::kHigh);
   EXPECT_THAT(EvaluateStep(net, state, {0, 0}), IsOk());
-  EXPECT_EQ(state[q], false);
+  EXPECT_EQ(state[q], GateTerminalState::kLow);
 }

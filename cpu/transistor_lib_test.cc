@@ -5,8 +5,10 @@
 
 #include "eval.h"
 
+using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::Optional;
+using ::testing::Pair;
 
 TEST(LibTest, TestNand) {
   Network net;
@@ -31,4 +33,26 @@ TEST(LibTest, TestMux) {
   EXPECT_THAT(EvaluateAll(net, {x}), Optional(ElementsAre(
                                          /*sel=0*/ 0, 1, 0, 1,
                                          /*sel=1*/ 0, 0, 1, 1)));
+}
+
+TEST(LibTest, TestTriStateBuffer) {
+  Network net;
+  NodeId data = net.make_input<1>()[0];
+  NodeId enable = net.make_input<1>()[0];
+
+  NodeId not_enable = make_not(net, enable);
+  NodeId out = make_tri_state_buffer(net, enable, not_enable, data);
+
+  EXPECT_THAT(  //
+      Evaluate(net, {{data, PinState::kLow}, {enable, PinState::kLow}}),
+      Contains(Pair(out, PinState::kUndefined)));
+  EXPECT_THAT(
+      Evaluate(net, {{data, PinState::kLow}, {enable, PinState::kHigh}}),
+      Contains(Pair(out, PinState::kLow)));
+  EXPECT_THAT(
+      Evaluate(net, {{data, PinState::kHigh}, {enable, PinState::kLow}}),
+      Contains(Pair(out, PinState::kUndefined)));
+  EXPECT_THAT(
+      Evaluate(net, {{data, PinState::kHigh}, {enable, PinState::kHigh}}),
+      Contains(Pair(out, PinState::kHigh)));
 }
