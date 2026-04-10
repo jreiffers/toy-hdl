@@ -202,7 +202,7 @@ void print_netlist(const Network& net) {
       input_names[net.get_input(input_id)[0]] = label;
     } else {
       for (int b = 0; b < bw; ++b) {
-        input_names[net.get_input(input_id)[b]] = absl::StrCat(label, "_", b);
+        input_names[net.get_input(input_id)[b]] = absl::StrCat(label, ".", b);
       }
     }
   });
@@ -227,17 +227,16 @@ void print_netlist(const Network& net) {
     }
 
     TransistorId tid(id);
-    return "t" + std::to_string(tid.drain().id) +
-           (id == tid.drain()       ? "d"
-            : id == tid.gate() == 1 ? "g"
-                                    : "s");
+    return std::to_string(tid.id) + (id == tid.drain()  ? ".d"
+                                     : id == tid.gate() ? ".g"
+                                                        : ".s");
   };
 
   std::vector<std::pair<NodeId, NodeId>> connections(
       net.ordered_connections().begin(), net.ordered_connections().end());
   print_list("connections", connections.size(), [&](int connection_id) {
     auto [a, b] = connections[connection_id];
-    std::cout << absl::Substitute(R"(["$0", "$1"])", netlist_label(a),
+    std::cout << absl::Substitute(R"(["$0","$1"])", netlist_label(a),
                                   netlist_label(b));
   });
   std::cout << ",";
