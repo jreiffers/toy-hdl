@@ -3,6 +3,7 @@
 #include <iostream>
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "gate_lib.h"
 #include "transistor_lib.h"
 
@@ -12,9 +13,7 @@ std::string label(NodeId id) {
   if (id == kClk) return "clk";
 
   if (id.is_input()) {
-    int index = id.input_index();
-    assert(index <= 26);
-    return std::string(1, 'A' + index);
+    return absl::StrCat("i", id.input_index());
   }
 
   TransistorId tid(id);

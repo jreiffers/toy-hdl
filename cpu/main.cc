@@ -56,13 +56,13 @@ void BuildRegister(GateNetwork& net) {
 }
 
 int print_usage() {
-  std::cerr << "usage: main [alu|alu2|pcgen|register]\n";
+  std::cerr << "usage: main [alu|alu2|pcgen|register] [tnet]?\n";
   return 1;
 }
 
 int main(int argc, const char* argv[]) {
   GateNetwork net;
-  if (argc != 2) {
+  if (argc < 2 || argc > 3) {
     return print_usage();
   }
 
@@ -83,8 +83,12 @@ int main(int argc, const char* argv[]) {
   }
 
   auto transistor_net = Compile(net);
-  print_graphviz(net);
-  // print_graphviz(transistor_net);
+
+  if (argc == 2 || (argc == 3 && std::string(argv[2]) != "tnet")) {
+    print_graphviz(net);
+  } else {
+    print_graphviz(transistor_net);
+  }
 
   return 0;
 }

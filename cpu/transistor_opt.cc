@@ -41,11 +41,12 @@ bool RunDte(Network& net) {
   for (auto [f, t] : net.ordered_connections()) {
     repl.connect(lookup(f), lookup(t));
   }
-  for (auto output : net.outputs()) {
+  for (int output_index = 0; output_index < net.num_outputs(); ++output_index) {
+    const auto& output = net.outputs()[output_index];
     for (int i = 0; i < output.bitwidth(); ++i) {
       output[i] = lookup(output[i]);
     }
-    repl.DeclareOutput(output);
+    repl.DeclareOutput(output, net.output_label(output_index));
   }
 
   net = std::move(repl);

@@ -87,7 +87,7 @@ Network Lower(GateNetwork& net) {
     for (int i = 0; i < o.bitwidth(); ++i) {
       ids.push_back(lowered.at(o[i]));
     }
-    result.DeclareOutput(dyn_reg(std::move(ids)));
+    result.DeclareOutput(dyn_reg(std::move(ids)), net.output_label(oi));
   }
 
   return result;
