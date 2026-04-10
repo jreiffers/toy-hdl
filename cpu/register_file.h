@@ -35,6 +35,7 @@ RegisterOutput<bw> MakeRegister(GateNetwork& net, GateReg<1> reset,
   GateTerminal read_enable_2 = net.Eq(my_addr, read_addr_2);
 
   RegisterOutput<bw> out;
+  // TODO: is a transmission gate sufficient here?
   out.read_port_1 = net.TriStateBuffer(read_enable_1, value);
   out.read_port_2 = net.TriStateBuffer(read_enable_2, value);
   return out;
