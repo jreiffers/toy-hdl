@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/substitute.h"
 #include "gate_lib.h"
 #include "transistor_lib.h"
 
@@ -175,4 +176,82 @@ void print_ngspice(const Network& net, NodeId out) {
   std::cout << "  plot v(A) v(B) v(" << ngspice_label(out) << ")\n";
   std::cout << ".endc\n";
   std::cout << ".end\n";
+}
+
+void print_netlist(const Network& net) {
+  std::cout << "{";
+
+  std::unordered_map<NodeId, std::string> input_names;
+
+  auto print_list = [](const std::string& label, int num, auto print_item) {
+    // std::format doesn't seem to exist in my standard library.
+    std::cout << absl::Substitute(R"("$0":[)", label);
+    for (int i = 0; i < num; ++i) {
+      if (i > 0) std::cout << ",";
+      print_item(i);
+    }
+    std::cout << "]";
+  };
+
+  print_list("inputs", net.num_inputs(), [&](int input_id) {
+    const std::string& label = net.input_label(input_id);
+    int bw = net.input_bitwidth(input_id);
+
+    std::cout << absl::Substitute(R"({"label":"$0","bitwidth":$1})", label, bw);
+    if (bw == 1) {
+      input_names[net.get_input(input_id)[0]] = label;
+    } else {
+      for (int b = 0; b < bw; ++b) {
+        input_names[net.get_input(input_id)[b]] = absl::StrCat(label, "_", b);
+      }
+    }
+  });
+
+  std::cout << R"(,"transistors":")";
+  for (int i = 0; i < net.num_transistors(); ++i) {
+    TransistorId tid(i);
+    if (net.transistor_type(tid) == TransistorType::kNChannel) {
+      std::cout << "n";
+    } else {
+      std::cout << "p";
+    }
+  }
+  std::cout << R"(",)";
+
+  auto netlist_label = [&](NodeId id) -> std::string {
+    if (id == kVdd) return "vdd";
+    if (id == kVss) return "vss";
+
+    if (id.is_input()) {
+      return input_names[id];
+    }
+
+    TransistorId tid(id);
+    return "t" + std::to_string(tid.drain().id) +
+           (id == tid.drain()       ? "d"
+            : id == tid.gate() == 1 ? "g"
+                                    : "s");
+  };
+
+  std::vector<std::pair<NodeId, NodeId>> connections(
+      net.ordered_connections().begin(), net.ordered_connections().end());
+  print_list("connections", connections.size(), [&](int connection_id) {
+    auto [a, b] = connections[connection_id];
+    std::cout << absl::Substitute(R"(["$0", "$1"])", netlist_label(a),
+                                  netlist_label(b));
+  });
+  std::cout << ",";
+
+  print_list("outputs", net.num_outputs(), [&](int output_id) {
+    const dyn_reg& output = net.outputs()[output_id];
+    std::cout << absl::Substitute(R"({"label":"$0","bitwidth":$1,)",
+                                  net.output_label(output_id),
+                                  output.bitwidth());
+    print_list("nodes", output.bitwidth(), [&](int bit_id) {
+      std::cout << absl::Substitute(R"("$0")", netlist_label(output[bit_id]));
+    });
+    std::cout << "}";
+  });
+
+  std::cout << "}\n";
 }

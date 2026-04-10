@@ -16,7 +16,8 @@ Network Lower(GateNetwork& net) {
   int num_inputs = net.input_bitwidths().size();
   for (int i = 0; i < num_inputs; ++i) {
     DynGateReg input = net.GetInput(i);
-    dyn_reg lowered_input = result.make_input(input.bitwidth());
+    dyn_reg lowered_input =
+        result.make_input(input.bitwidth(), net.input_label(i));
     for (int b = 0; b < input.bitwidth(); ++b) {
       lowered[input[b]] = lowered_input[b];
     }
