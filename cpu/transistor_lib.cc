@@ -148,16 +148,6 @@ NodeId make_tri_state_buffer(Network& net, NodeId enable, NodeId not_enable,
   return n.drain();
 }
 
-reg<2> make_half_adder(Network& net, NodeId a, NodeId b) {
-  return {make_xor(net, a, b), make_and(net, {a, b})};
-}
-
-reg<2> make_full_adder(Network& net, NodeId a, NodeId b, NodeId c) {
-  auto [sum_ab, carry_1] = make_half_adder(net, a, b).node_ids;
-  auto [sum_abc, carry_2] = make_half_adder(net, sum_ab, c).node_ids;
-  return {sum_abc, make_or(net, {carry_1, carry_2})};
-}
-
 NodeId make_tg(Network& net, NodeId sel, NodeId not_sel, NodeId a) {
   TransistorId p = net.make_transistor(TransistorType::kPChannel);
   TransistorId n = net.make_transistor(TransistorType::kNChannel);

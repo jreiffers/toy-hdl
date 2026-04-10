@@ -52,16 +52,6 @@ constexpr NodeId kVdd(-1);
 constexpr NodeId kVss(-2);
 constexpr NodeId kClk(-3);
 
-template <int bw>
-struct reg {
-  // LSB -> MSB
-  std::array<NodeId, bw> node_ids;
-
-  NodeId operator[](size_t index) const { return node_ids[index]; }
-
-  NodeId& operator[](size_t index) { return node_ids[index]; }
-};
-
 struct dyn_reg {
   explicit dyn_reg(std::vector<NodeId> ids) : node_ids_(std::move(ids)) {}
 
@@ -86,17 +76,6 @@ struct TransistorId {
 
 struct Network {
  public:
-  template <int bw>
-  reg<bw> make_input() {
-    reg<bw> result;
-    for (int i = 0; i < bw; ++i) {
-      result[i] = get_input_bit(input_offsets_.back() + i);
-    }
-    input_bitwidths_.push_back(bw);
-    input_offsets_.push_back(input_offsets_.back() + bw);
-    return result;
-  }
-
   dyn_reg make_input(int bw) {
     input_bitwidths_.push_back(bw);
     input_offsets_.push_back(input_offsets_.back() + bw);
@@ -156,15 +135,6 @@ struct Network {
 NodeId make_nand(Network& net, absl::Span<const NodeId> inputs);
 NodeId make_nor(Network& net, absl::Span<const NodeId> inputs);
 NodeId make_not(Network& net, NodeId input);
-template <int bw>
-reg<bw> make_not(Network& net, const reg<bw>& input) {
-  reg<bw> output;
-  for (int i = 0; i < bw; ++i) {
-    output[i] = make_not(net, input[i]);
-  }
-  return output;
-}
-
 NodeId make_and(Network& net, absl::Span<const NodeId> inputs);
 NodeId make_or(Network& net, absl::Span<const NodeId> inputs);
 NodeId make_xor(Network& net, NodeId a, NodeId b);
@@ -173,36 +143,10 @@ NodeId make_lookup(Network& net, NodeId a, NodeId b, NodeId not_a, NodeId not_b,
 NodeId make_tri_state_buffer(Network& net, NodeId enable, NodeId not_enable,
                              NodeId data);
 
-reg<2> make_half_adder(Network& net, NodeId a, NodeId b);
-reg<2> make_full_adder(Network& net, NodeId a, NodeId b, NodeId c);
-
 // Returns the transmission gate's drain.
 NodeId make_tg(Network& net, NodeId sel, NodeId not_sel, NodeId a);
 // Returns h if sel is high, l if sel is low.
 NodeId make_mux(Network& net, NodeId sel, NodeId not_sel, NodeId l, NodeId h);
-template <int bw>
-reg<bw> make_mux(Network& net, NodeId sel, NodeId not_sel, const reg<bw>& l,
-                 const reg<bw>& h) {
-  reg<bw> out;
-  for (int i = 0; i < bw; ++i) {
-    out[i] = make_mux(net, sel, not_sel, l[i], h[i]);
-  }
-  return out;
-}
-
-template <int bw>
-std::pair<reg<bw>, NodeId /* carry */> make_adder(Network& net,
-                                                  const reg<bw>& lhs,
-                                                  const reg<bw>& rhs,
-                                                  NodeId carry = {kVss}) {
-  reg<bw> result;
-  for (int i = 0; i < bw; ++i) {
-    auto partial = make_full_adder(net, lhs[i], rhs[i], carry).node_ids;
-    result[i] = partial[0];
-    carry = partial[1];
-  }
-  return {result, carry};
-}
 
 std::vector<NodeId> Flatten(absl::Span<const dyn_reg> regs);
 

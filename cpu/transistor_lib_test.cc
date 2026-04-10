@@ -12,9 +12,9 @@ using ::testing::Pair;
 
 TEST(LibTest, TestNand) {
   Network net;
-  NodeId a = net.make_input<1>()[0];
-  NodeId b = net.make_input<1>()[0];
-  NodeId c = net.make_input<1>()[0];
+  NodeId a = net.make_input(1)[0];
+  NodeId b = net.make_input(1)[0];
+  NodeId c = net.make_input(1)[0];
   NodeId x = make_nand(net, {a, b, c});
 
   EXPECT_THAT(EvaluateAll(net, {x}),
@@ -23,9 +23,9 @@ TEST(LibTest, TestNand) {
 
 TEST(LibTest, TestMux) {
   Network net;
-  NodeId a = net.make_input<1>()[0];
-  NodeId b = net.make_input<1>()[0];
-  NodeId sel = net.make_input<1>()[0];
+  NodeId a = net.make_input(1)[0];
+  NodeId b = net.make_input(1)[0];
+  NodeId sel = net.make_input(1)[0];
   NodeId not_sel = make_not(net, sel);
 
   NodeId x = make_mux(net, sel, not_sel, b, a);
@@ -37,8 +37,8 @@ TEST(LibTest, TestMux) {
 
 TEST(LibTest, TestTriStateBuffer) {
   Network net;
-  NodeId data = net.make_input<1>()[0];
-  NodeId enable = net.make_input<1>()[0];
+  NodeId data = net.make_input(1)[0];
+  NodeId enable = net.make_input(1)[0];
 
   NodeId not_enable = make_not(net, enable);
   NodeId out = make_tri_state_buffer(net, enable, not_enable, data);

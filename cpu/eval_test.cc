@@ -14,7 +14,7 @@ using ::testing::Optional;
 TEST(EvalTest, DetectsShort) {
   Network net;
 
-  NodeId a = net.make_input<1>()[0];
+  NodeId a = net.make_input(1)[0];
   NodeId not_a = make_not(net, a);
 
   TransistorId n = net.make_transistor(TransistorType::kNChannel);
@@ -35,8 +35,8 @@ TEST(EvalTest, DetectsShort) {
 
 TEST(EvalTest, WorksForXor) {
   Network net;
-  NodeId a = net.make_input<1>()[0];
-  NodeId b = net.make_input<1>()[0];
+  NodeId a = net.make_input(1)[0];
+  NodeId b = net.make_input(1)[0];
   NodeId x = make_xor(net, a, b);
 
   EXPECT_THAT(EvaluateAll(net, {x}), Optional(ElementsAre(0, 1, 1, 0)));
@@ -44,8 +44,8 @@ TEST(EvalTest, WorksForXor) {
 
 TEST(EvalTest, VerifySpec) {
   Network net;
-  NodeId a = net.make_input<1>()[0];
-  NodeId b = net.make_input<1>()[0];
+  NodeId a = net.make_input(1)[0];
+  NodeId b = net.make_input(1)[0];
   NodeId x = make_xor(net, a, b);
   NodeId y = make_nand(net, {a, b});
   NodeId z = make_nor(net, {make_not(net, a), b});
@@ -69,8 +69,8 @@ TEST(EvalTest, VerifySpec) {
 
 TEST(EvalTest, IncorrectSpec) {
   Network net;
-  NodeId b = net.make_input<1>()[0];
-  NodeId a = net.make_input<1>()[0];
+  NodeId b = net.make_input(1)[0];
+  NodeId a = net.make_input(1)[0];
   NodeId x = make_xor(net, a, b);
   NodeId y = make_nand(net, {a, b});
   NodeId z = make_nor(net, {make_not(net, a), b});
