@@ -35,9 +35,21 @@ GateReg<2> MakeHalfAdder(GateNetwork& net, GateTerminal a, GateTerminal b) {
 
 GateReg<2> MakeFullAdder(GateNetwork& net, GateTerminal a, GateTerminal b,
                          GateTerminal c) {
-  auto [sum_ab, carry_1] = MakeHalfAdder(net, a, b).vals;
-  auto [sum_abc, carry_2] = MakeHalfAdder(net, sum_ab, c).vals;
-  return {sum_abc, net.Or(carry_1, carry_2)};
+  GateReg<2> sum_ab_c1;
+  GateReg<2> sum_abc_c2;
+
+  {
+    ScopeGuard ab(net, "ab");
+    sum_ab_c1 = MakeHalfAdder(net, a, b);
+  }
+
+  {
+    ScopeGuard abc(net, "abc");
+    sum_abc_c2 = MakeHalfAdder(net, sum_ab_c1[0], c);
+  }
+
+  ScopeGuard carry(net, "carry");
+  return {sum_abc_c2[0], net.Or(sum_ab_c1[1], sum_abc_c2[1])};
 }
 
 GateReg<2> MakeSrLatch(GateNetwork& net, GateTerminal s, GateTerminal r,

@@ -76,6 +76,19 @@ def init_skidl_nets(net):
     return nets, header_nets
 
 
+def group_transistors(net):
+    out = dict([("children", dict()), ("transistors", dict())])
+    for (id, t) in enumerate(net.transistors):
+        dst = out
+        for scope in t.scope:
+            scope = str(scope)
+            if scope not in dst["children"]:
+                dst["children"][scope] = dict([("children", dict()), ("transistors", dict())])
+            dst = dst["children"][scope]
+        dst["transistors"][id] = t
+    return out
+
+
 def generate(net):
     n = Part("Transistor_FET",
              "2N7002",
@@ -86,22 +99,29 @@ def generate(net):
     nets, header_nets = init_skidl_nets(net)
 
     transistors = []
-    for id, t in enumerate(net.transistors):
-        # TODO: Chip selection - if src is not vss/vdd, a CD4007 is probably needed.
-        if t.kind == s.Transistor.Kind.kNChannel:
-            transistor = n()
-        else:
-            transistor = p()
 
-        assert transistor["G"] is not None, transistor
-        assert transistor["S"] is not None, transistor
-        assert transistor["D"] is not None, transistor
+    def emit_transistors(group, path='/'):
+        for (name, subgroup) in group["children"].items():
+            with SubCircuit(name):
+                emit_transistors(subgroup, path+name+'/')
+        for id, t in group["transistors"].items():
+            # TODO: Chip selection - if src is not vss/vdd, a CD4007 is probably needed.
+            if t.kind == s.Transistor.Kind.kNChannel:
+                transistor = n()
+            else:
+                transistor = p()
 
-        transistor.tag = f't{id}'
-        transistors.append(transistor)
-        nets[f"{id}.g"] = transistor["G"]
-        nets[f"{id}.s"] = transistor["S"]
-        nets[f"{id}.d"] = transistor["D"]
+            assert transistor["G"] is not None, transistor
+            assert transistor["S"] is not None, transistor
+            assert transistor["D"] is not None, transistor
+
+            transistor.tag = f'{path}/t{id}'
+            transistors.append(transistor)
+            nets[f"{id}.g"] = transistor["G"]
+            nets[f"{id}.s"] = transistor["S"]
+            nets[f"{id}.d"] = transistor["D"]
+
+    emit_transistors(group_transistors(net))
 
     vddt = Part("power", "VDD")
     vsst = Part("power", "VSS")

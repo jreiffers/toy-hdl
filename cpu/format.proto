@@ -20,6 +20,7 @@ message Transistor {
   }
 
   optional Kind kind = 1;
+  repeated string scope = 2;
 }
 
 message Connection {

@@ -246,6 +246,9 @@ toyhdl::serialization::Network ExportNetlist(const Network& net) {
                  } else {
                    transistor->set_kind(s::Transistor::kPChannel);
                  }
+                 for (const std::string& scope : net.transistor_scope(tid)) {
+                   transistor->add_scope(scope);
+                 }
                });
 
   auto netlist_label = [&](NodeId id) -> std::string {
