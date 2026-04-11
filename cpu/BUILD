@@ -68,7 +68,7 @@ cc_library(
     hdrs = ["gate_opt.h"],
     deps = [
         ":gate_lib",
-        ":print",
+        ":export",
         "@abseil-cpp//absl/algorithm:container",
     ],
 )
@@ -96,15 +96,15 @@ cc_binary(
         ":cpu_modules",
         ":eval",
         ":gate_lib",
-        ":print",
+        ":export",
         ":transistor_lib",
     ],
 )
 
 cc_library(
-    name = "print",
-    srcs = ["print.cc"],
-    hdrs = ["print.h"],
+    name = "export",
+    srcs = ["export.cc"],
+    hdrs = ["export.h"],
     deps = [
         ":transistor_lib",
         ":gate_lib",
@@ -144,7 +144,7 @@ cc_test(
     srcs = ["eval_test.cc"],
     deps = [
         ":eval",
-        ":print",
+        ":export",
         "@abseil-cpp//absl/status:status_matchers",
         "@googletest//:gtest_main",
     ],

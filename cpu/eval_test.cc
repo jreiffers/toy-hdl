@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "absl/status/status_matchers.h"
-#include "print.h"
+#include "export.h"
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
