@@ -37,6 +37,7 @@ Network Lower(GateNetwork& net) {
     for (auto input : gate.inputs()) {
       inputs.push_back(lowered.at(input));
     }
+    result.set_scope(gate.scope());
 
     absl::InlinedVector<NodeId, 1> outputs;
     switch (gate.kind()) {

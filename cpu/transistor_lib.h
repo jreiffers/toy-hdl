@@ -74,6 +74,19 @@ struct TransistorId {
   NodeId drain() const { return NodeId(id * 3 + TransistorTerminal::kDrain); }
 };
 
+struct Transistor {
+ public:
+  Transistor(TransistorType type, std::vector<std::string> scope)
+      : type_(type), scope_(std::move(scope)) {}
+
+  TransistorType type() const { return type_; }
+  const std::vector<std::string>& scope() const { return scope_; }
+
+ private:
+  TransistorType type_;
+  std::vector<std::string> scope_;
+};
+
 struct Network {
  public:
   dyn_reg make_input(int bw, std::string label = "") {
@@ -107,8 +120,13 @@ struct Network {
   int num_transistors() const { return transistors_.size(); }
   TransistorId make_transistor(TransistorType type);
   TransistorType transistor_type(TransistorId id) const {
-    return transistors_[id.id];
+    return transistors_[id.id].type();
   }
+  const std::vector<std::string>& transistor_scope(TransistorId id) const {
+    return transistors_[id.id].scope();
+  }
+
+  void set_scope(std::vector<std::string> scope) { scope_ = std::move(scope); }
 
   void replace(NodeId from, NodeId to);
   void connect(NodeId a, NodeId b);
@@ -138,7 +156,7 @@ struct Network {
   }
 
  private:
-  std::vector<TransistorType> transistors_;
+  std::vector<Transistor> transistors_;
   std::set<std::pair<NodeId, NodeId>> connections_;
   std::map<NodeId, std::set<NodeId>> bidi_connections;
   std::vector<dyn_reg> inputs_;
@@ -147,6 +165,7 @@ struct Network {
   std::vector<int> input_offsets_ = {0};
   std::vector<dyn_reg> outputs_;
   std::vector<std::string> output_labels_;
+  std::vector<std::string> scope_;
   int placeholder_id_ = std::numeric_limits<int>::min();
 };
 

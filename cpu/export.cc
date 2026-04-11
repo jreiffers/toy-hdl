@@ -36,15 +36,31 @@ void print_graphviz(const Network& net) {
   std::cout << "graph d {\n";
   for (int i = 0; i < net.num_transistors(); ++i) {
     TransistorId tid(i);
-    std::cout << "  subgraph cluster_t" << i << " {\n";
-    std::cout << "    label = \"t" << i
+    int d = 2;
+    for (const auto& scope : net.transistor_scope(tid)) {
+      std::cout << std::string(d, ' ') << "subgraph cluster_" << scope
+                << " {\n";
+      std::cout << std::string(d, ' ') << "  label = \"" << scope << "\";\n";
+      d += 2;
+    }
+
+    std::cout << std::string(d, ' ') << "subgraph cluster_t" << i << " {\n";
+    std::cout << std::string(d, ' ') << "  label = \"t" << i
               << (net.transistor_type(tid) == TransistorType::kNChannel ? "N"
                                                                         : "P")
               << "\";\n";
-    std::cout << "    " << label(tid.drain()) << " [label = \"drain\"];\n";
-    std::cout << "    " << label(tid.gate()) << " [label = \"gate\"];\n";
-    std::cout << "    " << label(tid.source()) << " [label = \"source\"];\n";
-    std::cout << "  }\n";
+    std::cout << std::string(d, ' ') << "  " << label(tid.drain())
+              << " [label = \"drain\"];\n";
+    std::cout << std::string(d, ' ') << "  " << label(tid.gate())
+              << " [label = \"gate\"];\n";
+    std::cout << std::string(d, ' ') << "  " << label(tid.source())
+              << " [label = \"source\"];\n";
+    std::cout << std::string(d, ' ') << "}\n";
+
+    while (d > 2) {
+      d -= 2;
+      std::cout << std::string(d, ' ') << "}\n";
+    }
   }
 
   for (auto [f, t] : net.ordered_connections()) {

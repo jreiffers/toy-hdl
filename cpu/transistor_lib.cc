@@ -10,7 +10,7 @@
 #include "absl/types/span.h"
 
 TransistorId Network::make_transistor(TransistorType type) {
-  transistors_.push_back(type);
+  transistors_.push_back({type, scope_});
   return TransistorId{static_cast<int>(transistors_.size()) - 1};
 }
 
