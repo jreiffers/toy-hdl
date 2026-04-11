@@ -28,6 +28,8 @@ bool FoldGates(GateNetwork& net, const std::function<void()>& callback) {
   bool changed;
   bool ever_changed = false;
 
+  assert(net.current_scope().empty());
+
   do {
     changed = false;
     net.WalkUnordered([&](int, Gate& gate) {
@@ -48,6 +50,7 @@ bool FoldGates(GateNetwork& net, const std::function<void()>& callback) {
       if (gate.num_inputs() == 2) {
         if (gate.kind() == GateKind::kNor) {
           if (auto a = SkipNot(gate, 0), b = SkipNot(gate, 1); a && b) {
+            ScopeGuard guard(net, gate.scope());
             gate.ReplaceAllUsesWith(net.And(*a, *b));
             changed = true;
           } else if (absl::c_contains(gate.inputs(), kLowGate)) {
@@ -61,6 +64,7 @@ bool FoldGates(GateNetwork& net, const std::function<void()>& callback) {
 
         if (gate.kind() == GateKind::kNand) {
           if (auto a = SkipNot(gate, 0), b = SkipNot(gate, 1); a && b) {
+            ScopeGuard guard(net, gate.scope());
             gate.ReplaceAllUsesWith(net.Or(*a, *b));
             changed = true;
           } else if (absl::c_contains(gate.inputs(), kLowGate)) {
@@ -104,6 +108,7 @@ bool CseGates(GateNetwork& net) {
     std::map<Gate, GateTerminal> seen_gates;
     changed = false;
     net.WalkUnordered([&](int, Gate& gate) {
+      // TODO fix scope
       auto [it, inserted] = seen_gates.try_emplace(gate, gate.output());
       if (!inserted) {
         changed = true;

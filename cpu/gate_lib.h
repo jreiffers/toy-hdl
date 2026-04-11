@@ -69,6 +69,9 @@ struct Gate {
 
   bool operator<(const Gate& rhs) const;
 
+  const std::vector<std::string>& scope() const { return scope_; }
+  void set_scope(std::vector<std::string> scope) { scope_ = std::move(scope); }
+
  private:
   friend struct GateNetwork;
 
@@ -77,6 +80,7 @@ struct Gate {
   absl::InlinedVector<GateTerminal, 2> inputs_;
   uint64_t lookup_data_;
   int num_outputs_;
+  std::vector<std::string> scope_;
 };
 
 std::string to_string(const Gate& gate);
@@ -243,6 +247,10 @@ struct GateNetwork {
 
   const std::unordered_set<GateUse>& GetUsers(GateTerminal terminal) const;
 
+  void PushScope(std::string scope) { scope_.push_back(std::move(scope)); }
+  void PopScope() { scope_.pop_back(); }
+  const std::vector<std::string>& current_scope() const { return scope_; }
+
  private:
   friend struct Gate;
 
@@ -253,10 +261,30 @@ struct GateNetwork {
   std::vector<int> output_bitwidths_;
   std::vector<int> output_offsets_ = {0};
 
+  std::vector<std::string> scope_;
+
   std::deque<Gate> gates_;
   std::vector<Gate*> free_gates_;
   std::unordered_map<GateTerminal, std::unordered_set<GateUse>> uses_;
   Gate& output_gate_;  // Fake gate to keep output references.
+};
+
+struct ScopeGuard {
+  ScopeGuard(GateNetwork& net, std::string scope) : net_(net), depth_(1) {
+    net_.PushScope(std::move(scope));
+  }
+  ScopeGuard(GateNetwork& net, std::vector<std::string> scope)
+      : net_(net), depth_(scope.size()) {
+    for (auto& s : scope) net_.PushScope(std::move(s));
+  }
+
+  ~ScopeGuard() {
+    for (int i = 0; i < depth_; ++i) net_.PopScope();
+  }
+
+ private:
+  GateNetwork& net_;
+  int depth_;
 };
 
 GateReg<2> MakeHalfAdder(GateNetwork& net, GateTerminal a, GateTerminal b);
@@ -267,8 +295,10 @@ template <int bw>
 std::pair<GateReg<bw>, GateTerminal /* carry */> MakeAdder(
     GateNetwork& net, const GateReg<bw>& lhs, const GateReg<bw>& rhs,
     GateTerminal carry = kLowGate) {
+  ScopeGuard guard(net, "adder");
   GateReg<bw> result;
   for (int i = 0; i < bw; ++i) {
+    ScopeGuard guard(net, absl::StrCat("bit", i));
     auto partial = MakeFullAdder(net, lhs[i], rhs[i], carry).vals;
     result[i] = partial[0];
     carry = partial[1];

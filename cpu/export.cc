@@ -82,11 +82,21 @@ void print_graphviz(GateNetwork& net,
 
   std::cout << "digraph d {\n";
   net.WalkUnordered([&](int id, Gate& gate) {
-    std::cout << "  subgraph cluster_g" << id << " {\n";
+    int d = 2;
+    for (const auto& scope : gate.scope()) {
+      std::cout << std::string(d, ' ') << "subgraph cluster_" << scope
+                << " {\n";
+      std::cout << std::string(d, ' ') << "  label = \"" << scope << "\";\n";
+      d += 2;
+    }
+
+    std::cout << std::string(d, ' ') << "subgraph cluster_g" << id << " {\n";
+    d += 2;
+
     auto color = colors.find(gate.output());
     if (color != colors.end()) {
-      std::cout << "    style = \"filled\";\n";
-      std::cout << "    color = \"";
+      std::cout << std::string(d, ' ') << "style = \"filled\";\n";
+      std::cout << std::string(d, ' ') << "color = \"";
       if (color->second) {
         std::cout << "blue";
       } else {
@@ -94,15 +104,20 @@ void print_graphviz(GateNetwork& net,
       }
       std::cout << "\";\n";
     }
-    std::cout << "    label = \"" << to_string(gate) << "\";\n";
+    std::cout << std::string(d, ' ') << "label = \"" << to_string(gate)
+              << "\";\n";
     for (int j = 0; j < gate.num_inputs(); ++j) {
-      std::cout << "    g" << id << "i" << j << " [label = \"i" << j << "\"];";
+      std::cout << std::string(d, ' ') << "g" << id << "i" << j
+                << " [label = \"i" << j << "\"];";
     }
     for (int j = 0; j < gate.num_outputs(); ++j) {
-      std::cout << "    " << terminal_node(gate.output(j)) << " [label = \"o"
-                << j << "\"];\n";
+      std::cout << std::string(d, ' ') << terminal_node(gate.output(j))
+                << " [label = \"o" << j << "\"];\n";
     }
-    std::cout << "  }\n";
+    while (d > 2) {
+      d -= 2;
+      std::cout << std::string(d, ' ') << "}\n";
+    }
   });
 
   net.WalkUnordered([&](int id, Gate& gate) {

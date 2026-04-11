@@ -23,12 +23,19 @@ struct Alu {
 template <int bw>
 Alu<bw> MakeAlu(GateNetwork& net, GateReg<bw> a, GateReg<bw> b,
                 GateReg<1> carry_in, GateReg<1> neg_b) {
-  GateReg<bw> not_b = net.Not(b);
-  GateReg<bw> picked_b = net.Mux(neg_b[0], not_b, b);
+  ScopeGuard scope(net, "alu");
+  GateReg<bw> picked_b;
+  {
+    ScopeGuard pick(net, "pick_b");
+    GateReg<bw> not_b = net.Not(b);
+    picked_b = net.Mux(neg_b[0], not_b, b);
+  }
 
   Alu<bw> alu;
   std::tie(alu.res, alu.carry_out[0]) =
       MakeAdder(net, a, picked_b, carry_in[0]);
+
+  ScopeGuard zero(net, "is_zero");
   alu.zero[0] = net.Nor(alu.res.vals);
   return alu;
 }

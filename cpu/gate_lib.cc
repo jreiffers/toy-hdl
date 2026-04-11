@@ -120,7 +120,8 @@ Gate::Gate(GateNetwork* owner, GateKind kind,
       kind_(kind),
       inputs_(std::move(inputs)),
       lookup_data_(0),
-      num_outputs_(num_outputs) {
+      num_outputs_(num_outputs),
+      scope_(owner->current_scope()) {
   for (int i = 0; i < inputs_.size(); ++i) {
     owner_->uses_[inputs_[i]].insert({this, i});
   }
