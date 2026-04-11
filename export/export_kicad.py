@@ -7,6 +7,7 @@ from absl import app
 from absl import flags
 import cpu.format_pb2 as s
 from skidl import *
+from util import group_transistors, open_net
 
 FLAGS = flags.FLAGS
 
@@ -75,20 +76,6 @@ def init_skidl_nets(net):
 
     return nets, header_nets
 
-
-def group_transistors(net):
-    out = dict([("children", dict()), ("transistors", dict())])
-    for (id, t) in enumerate(net.transistors):
-        dst = out
-        for scope in t.scope:
-            scope = str(scope)
-            if scope not in dst["children"]:
-                dst["children"][scope] = dict([("children", dict()), ("transistors", dict())])
-            dst = dst["children"][scope]
-        dst["transistors"][id] = t
-    return out
-
-
 def generate(net):
     n = Part("Transistor_FET",
              "2N7002",
@@ -116,6 +103,7 @@ def generate(net):
             assert transistor["D"] is not None, transistor
 
             transistor.tag = f'{path}/t{id}'
+            transistor.ref = f'Q{id}'
             transistors.append(transistor)
             nets[f"{id}.g"] = transistor["G"]
             nets[f"{id}.s"] = transistor["S"]
@@ -149,10 +137,7 @@ def main(argv):
     assert len(FLAGS.input) > 0
     assert len(FLAGS.output) > 0
 
-    with open(FLAGS.input, "rb") as f:
-        net = s.Network()
-        net.ParseFromString(f.read())
-        generate(net)
+    generate(open_net(FLAGS.input))
 
 
 if __name__ == '__main__':
