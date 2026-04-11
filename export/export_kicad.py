@@ -50,8 +50,10 @@ def init_skidl_nets(net):
     nets['vss'] = Net("VSS")
 
     header_nets = ['vdd', 'vss']
+    seen_jumpers = []
 
     for input in net.inputs:
+        print(f'Processing input {input.name}')
         nets[input.name] = Bus(input.name, input.bitwidth)
         for i in range(input.bitwidth):
             nets[f'{input.name}.{i}'] = nets[input.name][i]
@@ -59,20 +61,18 @@ def init_skidl_nets(net):
             nets[input.name] = nets[input.name][0]
         if input.name in FLAGS.jumpers:
             generate_jumper(nets, input)
+            seen_jumpers.append(input.name)
         else:
             for i in range(input.bitwidth):
                 header_nets.append(f'{input.name}.{i}')
 
+    assert set(seen_jumpers) == set(FLAGS.jumpers), seen_jumpers
+
     for output in net.outputs:
-        if len(output.terminals) == 1:
-            nets[output.name] = Net(output.name)
-            header_nets.append(output.name)
-        else:
-            bus = Bus(output.name, len(output.terminals))
-            nets[output.name] = bus
-            for i in range(input.bitwidth):
-                nets[f'{output.name}.{i}'] = bus[i]
-                header_nets.append(f'{output.name}.{i}')
+        bus = Bus(output.name, len(output.terminals))
+        for i in range(len(output.terminals)):
+            header_nets.append(f'{output.name}.{i}')
+            nets[f'{output.name}.{i}'] = bus[i]
 
     return nets, header_nets
 
@@ -111,12 +111,6 @@ def generate(net):
 
     emit_transistors(group_transistors(net))
 
-    vddt = Part("power", "VDD")
-    vsst = Part("power", "VSS")
-
-    vddt & nets['vdd']
-    vsst & nets['vss']
-
     def get_net(name):
         assert name in nets, f'net {name} not found'
         net = nets[name]
@@ -128,6 +122,10 @@ def generate(net):
         b = c.node_b
 
         get_net(a) & get_net(b)
+
+    for output in net.outputs:
+        for i, t in enumerate(output.terminals):
+            nets[f'{output.name}.{i}'] & get_net(t)
 
     generate_header(nets, header_nets)
     generate_netlist(tool=KICAD9, file=FLAGS.output)

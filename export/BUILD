@@ -21,6 +21,18 @@ py_binary(
 )
 
 py_binary(
+    name = "export_breadboard",
+    srcs = ["export_breadboard.py"],
+    deps = [
+        ":util",
+        "//cpu:format_py_proto",
+        "@abseil-py//absl/flags",
+        "@abseil-py//absl:app",
+    ],
+    imports = ["."],
+)
+
+py_binary(
     name = "placer_kicad",
     srcs = ["placer_kicad.py"],
     deps = [

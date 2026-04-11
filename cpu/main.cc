@@ -37,9 +37,9 @@ void BuildAlu(GateNetwork& net) {
   auto carry_in = net.AddInput<1>("cin");
   auto neg_b = net.AddInput<1>("negb");
   Alu<bw> alu = MakeAlu<bw>(net, a, b, carry_in, neg_b);
-  net.DeclareOutput(alu.res);
-  net.DeclareOutput(alu.carry_out);
-  net.DeclareOutput(alu.zero);
+  net.DeclareOutput(alu.res, "result");
+  net.DeclareOutput(alu.carry_out, "cout");
+  net.DeclareOutput(alu.zero, "zero");
 }
 
 void BuildPcGen(GateNetwork& net) {
@@ -86,6 +86,11 @@ int main(int argc, char* argv[]) {
     BuildRegister<4>(net);
   } else if (mod == "register1") {
     BuildRegister<1>(net);
+  } else if (mod == "mux") {
+    auto a = net.AddInput<1>("a");
+    auto b = net.AddInput<1>("b");
+    auto sel = net.AddInput<1>("sel");
+    net.DeclareOutput(DynGateReg({net.Mux(sel[0], a[0], b[0])}));
   } else {
     return print_usage();
   }

@@ -10,17 +10,7 @@ flags.DEFINE_string(
     'dist_mode', 'group',
     'Whether to consider distances within the *group* or *global*ly.')
 
-from util import group_transistors, open_net
-
-
-def normalize(s):
-    if type(s) is int:
-        return str(s)
-    if '.' in s:
-        return s.split('.')[0]
-    if s[0] == 'Q':
-        return s[1:]
-    return s
+from util import get_connections, group_transistors, normalize, open_net
 
 
 def sum_of_wire_lengths_in_group(rows_cols, conns, t):
@@ -40,18 +30,7 @@ def sum_of_wire_lengths_in_group(rows_cols, conns, t):
 def main(argv):
     net = open_net(FLAGS.input)
     groups = group_transistors(net)
-    conns = dict()
-
-    for c in net.connections:
-        a, b = normalize(c.node_a), normalize(c.node_b)
-
-        if a not in conns:
-            conns[a] = set()
-        if b not in conns:
-            conns[b] = set()
-
-        conns[a].add(b)
-        conns[b].add(a)
+    conns = get_connections(net)
 
     def is_connected(a, b):
         a = normalize(a)
