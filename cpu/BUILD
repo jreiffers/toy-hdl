@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 
 cc_library(
     name = "transistor_lib",
@@ -92,6 +93,8 @@ cc_binary(
     srcs = ["main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
         ":compiler",
         ":cpu_modules",
         ":eval",
@@ -106,8 +109,9 @@ cc_library(
     srcs = ["export.cc"],
     hdrs = ["export.h"],
     deps = [
-        ":transistor_lib",
+        ":format_cc_proto",
         ":gate_lib",
+        ":transistor_lib",
     ]
 )
 
@@ -158,4 +162,20 @@ cc_test(
         ":eval",
         "@googletest//:gtest_main",
     ],
+)
+
+proto_library(
+    name = "format_proto",
+    srcs = ["format.proto"],
+)
+
+cc_proto_library(
+    name = "format_cc_proto",
+    deps = [":format_proto"],
+)
+
+py_proto_library(
+    name = "format_py_proto",
+    deps = [":format_proto"],
+    visibility = ["//visibility:public"],
 )

@@ -1,6 +1,18 @@
-bazel_dep(name = "rules_cc", version = "0.0.17")
-bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "abseil-cpp", version = "20260107.1")
+bazel_dep(name = "abseil-py", version = "2.4.0")
+bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "protobuf", version = "34.1")
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "rules_python", version = "1.9.0")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pip_deps",
+    python_version = "3.11",
+    requirements_lock = "//:requirements_lock_3_11.txt",
+)
+use_repo(pip, "pip_deps")
+
 
 # googletest 1.17.0 does not support bazel 9.0.
 #git_override(

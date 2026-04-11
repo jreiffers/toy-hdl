@@ -1,4 +1,5 @@
 #include <cassert>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <queue>
@@ -8,17 +9,26 @@
 #include <unordered_set>
 #include <vector>
 
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "alu.h"
 #include "compiler.h"
-#include "eval.h"
 #include "export.h"
 #include "gate_lib.h"
-#include "gate_opt.h"
-#include "lower_gates.h"
 #include "pc_gen.h"
 #include "register_file.h"
 #include "transistor_lib.h"
-#include "transistor_opt.h"
+
+ABSL_FLAG(
+    std::string, module, "",
+    "The module to generate. One of alu, alu2, pcgen, register, register1");
+ABSL_FLAG(std::string, format, "gnet",
+          "The output to produce. gnet for the gate network, tnet for the "
+          "transistor network, netlist for a serialized netlist. Netlist "
+          "requires --output to be non-empty.");
+ABSL_FLAG(std::string, output, "",
+          "The output file to write to. If empty, write to stdout, unless the "
+          "output is binary.");
 
 template <int bw>
 void BuildAlu(GateNetwork& net) {
@@ -56,18 +66,16 @@ void BuildRegister(GateNetwork& net) {
 }
 
 int print_usage() {
-  std::cerr << "usage: main [alu|alu2|pcgen|register] [gnet|tnet|netlist]?\n";
+  std::cerr << "usage: main --help\n";
   return 1;
 }
 
-int main(int argc, const char* argv[]) {
+int main(int argc, char* argv[]) {
+  absl::ParseCommandLine(argc, argv);
+
   GateNetwork net;
-  if (argc < 2 || argc > 3) {
-    return print_usage();
-  }
 
-  std::string mod = argv[1];
-
+  std::string mod = absl::GetFlag(FLAGS_module);
   if (mod == "alu") {
     BuildAlu<4>(net);
   } else if (mod == "alu2") {
@@ -84,15 +92,18 @@ int main(int argc, const char* argv[]) {
 
   auto transistor_net = Compile(net);
 
-  std::string mode = "gnet";
-  if (argc == 3) mode = argv[2];
-
-  if (mode == "gnet") {
+  std::string format = absl::GetFlag(FLAGS_format);
+  if (format == "gnet") {
     print_graphviz(net);
-  } else if (mode == "tnet") {
+  } else if (format == "tnet") {
     print_graphviz(transistor_net);
-  } else if (mode == "netlist") {
-    print_netlist(transistor_net);
+  } else if (format == "netlist") {
+    assert(!absl::GetFlag(FLAGS_output).empty());
+
+    auto netlist = ExportNetlist(transistor_net);
+    std::fstream output(absl::GetFlag(FLAGS_output),
+                        std::ios::out | std::ios::trunc | std::ios::binary);
+    assert(netlist.SerializeToOstream(&output));
   } else {
     return print_usage();
   }

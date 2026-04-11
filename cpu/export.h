@@ -3,8 +3,9 @@
 
 #include <unordered_map>
 
-#include "gate_lib.h"
-#include "transistor_lib.h"
+#include "cpu/format.pb.h"
+#include "cpu/gate_lib.h"
+#include "cpu/transistor_lib.h"
 
 void print_graphviz(const Network& net);
 void print_graphviz(GateNetwork& net,
@@ -12,6 +13,6 @@ void print_graphviz(GateNetwork& net,
 void print_ngspice(const Network& net, NodeId out);
 
 // Prints the network in a custom ad-hoc netlist format.
-void print_netlist(const Network& net);
+toyhdl::serialization::Network ExportNetlist(const Network& net);
 
 #endif

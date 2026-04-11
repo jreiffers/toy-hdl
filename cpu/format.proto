@@ -1,0 +1,37 @@
+syntax = "proto2";
+
+package toyhdl.serialization;
+
+message Input {
+  optional string name = 1;
+  optional int32 bitwidth = 2;
+}
+
+message Output {
+  optional string name = 1;
+  repeated string terminals = 2;
+}
+
+message Transistor {
+  enum Kind {
+    kUndefined = 0;
+    kNChannel = 1;
+    kPChannel = 2;
+  }
+
+  optional Kind kind = 1;
+}
+
+message Connection {
+  optional string node_a = 1;
+  optional string node_b = 2;
+}
+
+message Network {
+  repeated Transistor transistors = 1;
+  repeated Input inputs = 2;
+  repeated Output outputs = 3;
+  repeated Connection connections = 4;
+}
+
+
