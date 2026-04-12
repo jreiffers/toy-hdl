@@ -23,21 +23,38 @@ RegisterOutput<bw> MakeRegister(GateNetwork& net, GateReg<1> reset,
                                 GateReg<register_addr_bits> read_addr_2,
                                 GateReg<register_addr_bits> write_addr,
                                 GateReg<bw> write_data) {
-  GateTerminal write_enable = net.Eq(my_addr, write_addr);
-  GateReg<bw> muxes = net.Mux(write_enable, write_data, write_data);
+  GateTerminal write_enable;
+  {
+    ScopeGuard guard(net, "write_enable");
+    write_enable = net.Eq(my_addr, write_addr);
+  }
+
+  GateReg<bw> muxes;
+  {
+    ScopeGuard guard(net, "write_data");
+    muxes = net.Mux(write_enable, write_data, write_data);
+  }
+
   GateReg<bw> value;
   for (int i = 0; i < bw; ++i) {
+    ScopeGuard guard(net, absl::StrCat("bit", i));
     value[i] = MakeDFlipFlop(net, muxes[i], clk[0], reset[0])[0];
     muxes[i].first->SetInput(3, value[i]);
   }
-
-  GateTerminal read_enable_1 = net.Eq(my_addr, read_addr_1);
-  GateTerminal read_enable_2 = net.Eq(my_addr, read_addr_2);
-
   RegisterOutput<bw> out;
-  // TODO: is a transmission gate sufficient here?
-  out.read_port_1 = net.TriStateBuffer(read_enable_1, value);
-  out.read_port_2 = net.TriStateBuffer(read_enable_2, value);
+
+  {
+    ScopeGuard guard(net, "read_port_1");
+    GateTerminal read_enable_1 = net.Eq(my_addr, read_addr_1);
+    out.read_port_1 = net.TriStateBuffer(read_enable_1, value);
+  }
+
+  {
+    ScopeGuard guard(net, "read_port_2");
+    GateTerminal read_enable_2 = net.Eq(my_addr, read_addr_2);
+    out.read_port_2 = net.TriStateBuffer(read_enable_2, value);
+  }
+
   return out;
 }
 
