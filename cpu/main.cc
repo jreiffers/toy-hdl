@@ -29,6 +29,8 @@ ABSL_FLAG(std::string, format, "gnet",
 ABSL_FLAG(std::string, output, "",
           "The output file to write to. If empty, write to stdout, unless the "
           "output is binary.");
+ABSL_FLAG(bool, avoid_transmission_gates, true,
+          "If set, do not emit transmission gates.");
 
 template <int bw>
 void BuildAlu(GateNetwork& net) {
@@ -95,7 +97,9 @@ int main(int argc, char* argv[]) {
     return print_usage();
   }
 
-  auto transistor_net = Compile(net);
+  CompileOpts opts;
+  opts.avoid_transmission_gates = absl::GetFlag(FLAGS_avoid_transmission_gates);
+  auto transistor_net = Compile(net, opts);
 
   std::string format = absl::GetFlag(FLAGS_format);
   if (format == "gnet") {

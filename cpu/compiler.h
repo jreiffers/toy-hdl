@@ -6,7 +6,12 @@
 #include "gate_lib.h"
 #include "transistor_lib.h"
 
-Network Compile(
-    GateNetwork& net, const std::function<void()>& callback = +[]() {});
+struct CompileOpts {
+  bool avoid_transmission_gates = false;
+
+  std::function<void()> callback = +[]() {};
+};
+
+Network Compile(GateNetwork& net, const CompileOpts& opts = {});
 
 #endif

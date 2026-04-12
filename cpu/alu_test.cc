@@ -24,7 +24,7 @@ TEST(AluTest, Test) {
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.zero);
 
-  FoldGates(net);
+  FoldGates(net, FoldGatesOpts());
 
   Network transistor_net = Lower(net);
 

@@ -24,7 +24,7 @@ std::optional<GateTerminal> SkipNot(Gate& gate, int input_id = 0) {
 
 }  // namespace
 
-bool FoldGates(GateNetwork& net, const std::function<void()>& callback) {
+bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
   bool changed;
   bool ever_changed = false;
 
@@ -45,6 +45,17 @@ bool FoldGates(GateNetwork& net, const std::function<void()>& callback) {
           gate.ReplaceAllUsesWith(kLowGate);
           changed = true;
         }
+      }
+
+      if (opts.lower_mux && gate.kind() == GateKind::kMux) {
+        ScopeGuard guard(net, gate.scope());
+        auto sel = gate.input(0);
+        auto not_sel = gate.input(1);
+        auto hi = gate.input(2);
+        auto lo = gate.input(3);
+        gate.ReplaceAllUsesWith(
+            net.Nand({net.Nand({sel, hi}), net.Nand({not_sel, lo})}));
+        changed = true;
       }
 
       if (gate.num_inputs() == 2) {
@@ -91,7 +102,7 @@ bool FoldGates(GateNetwork& net, const std::function<void()>& callback) {
         }
       }
 
-      callback();
+      opts.callback();
       changed |= canonicalized;
     });
 

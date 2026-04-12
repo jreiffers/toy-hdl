@@ -30,9 +30,12 @@ TEST(PcGenTest, TestSpec) {
   PcGen<5> pcgen = MakePcGen<5>(net, pc, do_jump, jump_addr);
   net.DeclareOutput(pcgen.next_pc);
 
-  auto transistor_net = Compile(net, [&]() {
+  CompileOpts opts;
+  opts.callback = [&]() {
     assert(VerifySpec(net, {net.GetOutput(0)}, PcGen<5>::spec).ok());
-  });
+  };
+
+  auto transistor_net = Compile(net, opts);
   ABSL_EXPECT_OK(
       VerifySpec(transistor_net, transistor_net.outputs(), PcGen<5>::spec));
 }
