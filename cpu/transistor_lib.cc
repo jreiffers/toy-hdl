@@ -47,6 +47,10 @@ const std::set<NodeId>& Network::connected_nodes(NodeId node) const {
   return it->second;
 }
 
+void Network::TagNode(NodeId node, std::string tag) {
+  tagged_nodes_[node] = std::move(tag);
+}
+
 NodeId make_nand(Network& net, absl::Span<const NodeId> inputs) {
   NodeId ret = kVss;
   for (NodeId i : inputs) {

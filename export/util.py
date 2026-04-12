@@ -2,6 +2,7 @@ import disjoint_set
 import cpu.format_pb2 as s
 from collections import defaultdict
 
+
 def normalize(s):
     if type(s) is int:
         return str(s)
@@ -44,7 +45,8 @@ def group_transistor_nets(net) -> dict[str, list[set[str]]]:
         if ('vss' in group) or ('vdd' in group):
             continue
 
-        transistors = set([normalize(x) for x in group if x[0] in '0123456789'])
+        transistors = set(
+            [normalize(x) for x in group if x[0] in '0123456789'])
         for element in transistors:
             transistor_groups[element].append(transistors)
 
@@ -58,8 +60,8 @@ def group_transistors_by_hierarchy(net):
         for scope in t.scope:
             scope = str(scope)
             if scope not in dst["children"]:
-                dst["children"][scope] = dict([("children", dict()), ("transistors", dict())])
+                dst["children"][scope] = dict([("children", dict()),
+                                               ("transistors", dict())])
             dst = dst["children"][scope]
         dst["transistors"][id] = t
     return out
-

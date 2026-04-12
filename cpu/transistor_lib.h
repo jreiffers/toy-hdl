@@ -155,6 +155,11 @@ struct Network {
     return output_labels_;
   }
 
+  void TagNode(NodeId node, std::string tag);
+  const std::map<NodeId, std::string>& tagged_nodes() const {
+    return tagged_nodes_;
+  }
+
  private:
   std::vector<Transistor> transistors_;
   std::set<std::pair<NodeId, NodeId>> connections_;
@@ -166,6 +171,7 @@ struct Network {
   std::vector<dyn_reg> outputs_;
   std::vector<std::string> output_labels_;
   std::vector<std::string> scope_;
+  std::map<NodeId, std::string> tagged_nodes_;
   int placeholder_id_ = std::numeric_limits<int>::min();
 };
 

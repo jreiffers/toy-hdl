@@ -28,11 +28,17 @@ message Connection {
   optional string node_b = 2;
 }
 
+message TaggedNode {
+  optional string node = 1;
+  optional string tag = 2;
+}
+
 message Network {
   repeated Transistor transistors = 1;
   repeated Input inputs = 2;
   repeated Output outputs = 3;
   repeated Connection connections = 4;
+  repeated TaggedNode tagged_nodes = 5;
 }
 
 

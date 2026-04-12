@@ -7,13 +7,31 @@ from absl import app
 from absl import flags
 import cpu.format_pb2 as s
 from skidl import *
-from util import group_transistors_by_hierarchy, open_net
+from util import group_transistors_by_hierarchy, open_net, normalize
+import re
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('input', '', 'Serialized netlist file.')
 flags.DEFINE_string('output', '', 'KICAD schematic output file.')
 flags.DEFINE_list('jumpers', '', 'Inputs that are set using jumpers.')
+flags.DEFINE_float('indicator_led_voltage', 2.4,
+                   'Forward voltage of indicator LEDs.')
+flags.DEFINE_float('indicator_led_current', 0.004, 'Indicator LED current.')
+flags.DEFINE_float('supply_voltage', 5.0, 'VDD')
+flags.DEFINE_string(
+    'indicator_tag_re', '',
+    'Regular expression for tagged nodes to emit indicators for.')
+
+AVAILABLE_RESISTORS = [150, 300, 680, 1200, 2400, 3900, 5600]
+
+
+def get_indicator_resistor_value():
+    ideal = (FLAGS.supply_voltage -
+             FLAGS.indicator_led_voltage) / FLAGS.indicator_led_current
+    actual = min(AVAILABLE_RESISTORS, key=lambda x: abs(x - ideal))
+    assert (ideal / 2 < actual < ideal * 2)
+    return actual
 
 
 def generate_jumper(nets, input):
@@ -30,6 +48,23 @@ def generate_jumper(nets, input):
         vss_conn[i + 1] & nets['vss']
         vdd_conn[i + 1] & nets['vdd']
         out[i + 1] & nets[f'{input.name}.{i}']
+
+
+def generate_indicator(nets, net, tag):
+    led = Part('Device',
+               'LED',
+               dest=TEMPLATE,
+               footprint='LED_SMD:LED_0603_1608Metric')()
+    led.tag = f'{tag}/led'
+
+    r = Part('Device',
+             'R',
+             dest=TEMPLATE,
+             value=str(get_indicator_resistor_value()),
+             footprint='Resistor_SMD:R_0402_1005Metric')()
+    r.tag = f'{tag}/r'
+
+    nets[net] & r & led["A K"] & nets['vss']
 
 
 def generate_header(nets, header_nets):
@@ -128,6 +163,16 @@ def generate(net):
         for i, t in enumerate(output.terminals):
             nets[f'{output.name}.{i}'] & get_net(t)
 
+    if FLAGS.indicator_tag_re:
+        exp = re.compile(FLAGS.indicator_tag_re)
+        for tag in net.tagged_nodes:
+            tid = normalize(tag.node)
+            assert tid[0] in '0123456789'
+            full_tag = f'{"/".join(net.transistors[int(tid)].scope)}/{tag.tag}'
+            if exp.match(full_tag):
+                print(f'Generating indicator {full_tag} for node {tag.node}')
+                generate_indicator(nets, tag.node, full_tag)
+
     generate_header(nets, header_nets)
     generate_netlist(tool=KICAD9, file=FLAGS.output)
 
@@ -135,6 +180,10 @@ def generate(net):
 def main(argv):
     assert len(FLAGS.input) > 0
     assert len(FLAGS.output) > 0
+
+    print(
+        f"Indicator current: {(FLAGS.supply_voltage - FLAGS.indicator_led_voltage) / get_indicator_resistor_value() * 1000} mA"
+    )
 
     generate(open_net(FLAGS.input))
 

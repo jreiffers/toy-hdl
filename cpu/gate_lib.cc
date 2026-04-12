@@ -89,6 +89,8 @@ GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
   g2.first->SetInput(2, g3);
   g4.first->SetInput(2, g5);
 
+  g5.first->set_output_tag("value");
+
   return {g5, g4};
 }
 

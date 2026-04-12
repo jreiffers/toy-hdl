@@ -73,6 +73,9 @@ struct Gate {
   std::vector<std::string>& scope() { return scope_; }
   void set_scope(std::vector<std::string> scope) { scope_ = std::move(scope); }
 
+  const std::string& output_tag() const { return output_tag_; }
+  void set_output_tag(std::string tag) { output_tag_ = std::move(tag); }
+
  private:
   friend struct GateNetwork;
 
@@ -81,6 +84,7 @@ struct Gate {
   absl::InlinedVector<GateTerminal, 2> inputs_;
   uint64_t lookup_data_;
   int num_outputs_;
+  std::string output_tag_;
   std::vector<std::string> scope_;
 };
 

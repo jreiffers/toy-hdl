@@ -75,6 +75,10 @@ Network Lower(GateNetwork& net) {
       auto& l = lowered[gate.output(i)];
       replacements[l] = outputs[i];
       l = outputs[i];
+
+      if (!gate.output_tag().empty()) {
+        result.TagNode(outputs[i], gate.output_tag());
+      }
     }
   });
 

@@ -284,5 +284,13 @@ toyhdl::serialization::Network ExportNetlist(const Network& net) {
                               });
                });
 
+  std::vector<std::pair<NodeId, std::string>> tags(net.tagged_nodes().begin(),
+                                                   net.tagged_nodes().end());
+  convert_list(out.mutable_tagged_nodes(), tags.size(),
+               [&](s::TaggedNode* tag, int tag_id) {
+                 tag->set_node(netlist_label(tags[tag_id].first));
+                 tag->set_tag(tags[tag_id].second);
+               });
+
   return out;
 }
