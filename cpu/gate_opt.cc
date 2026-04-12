@@ -119,11 +119,28 @@ bool CseGates(GateNetwork& net) {
     std::map<Gate, GateTerminal> seen_gates;
     changed = false;
     net.WalkUnordered([&](int, Gate& gate) {
-      // TODO fix scope
       auto [it, inserted] = seen_gates.try_emplace(gate, gate.output());
       if (!inserted) {
         changed = true;
         gate.ReplaceAllUsesWith(it->second);
+
+        // Truncate the merged gate's scope to the common prefix.
+        auto& repl = *it->second.first;
+        int max_prefix_len = std::min(gate.scope().size(), repl.scope().size());
+        repl.scope().erase(repl.scope().begin() + max_prefix_len,
+                           repl.scope().end());
+
+        auto a_it = gate.scope().begin();
+        auto b_it = repl.scope().begin();
+        for (int i = 0; i < max_prefix_len; ++i) {
+          if (*a_it != *b_it) {
+            repl.scope().erase(b_it, repl.scope().end());
+            break;
+          }
+          ++a_it;
+          ++b_it;
+        }
+
         gate.Erase();
       }
     });
