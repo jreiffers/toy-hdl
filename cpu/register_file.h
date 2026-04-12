@@ -43,17 +43,24 @@ RegisterOutput<bw> MakeRegister(GateNetwork& net, GateReg<1> reset,
   }
   RegisterOutput<bw> out;
 
-  {
-    ScopeGuard guard(net, "read_port_1");
-    GateTerminal read_enable_1 = net.Eq(my_addr, read_addr_1);
-    out.read_port_1 = net.TriStateBuffer(read_enable_1, value);
-  }
+  auto make_read_port = [&net, &value, &my_addr](
+                            int index, GateReg<register_addr_bits>& read_addr) {
+    ScopeGuard guard(net, absl::StrCat("read_port", index));
 
-  {
-    ScopeGuard guard(net, "read_port_2");
-    GateTerminal read_enable_2 = net.Eq(my_addr, read_addr_2);
-    out.read_port_2 = net.TriStateBuffer(read_enable_2, value);
-  }
+    GateTerminal read_enable;
+    {
+      ScopeGuard re_guard(net, "read_enable");
+      read_enable = net.Eq(my_addr, read_addr);
+    }
+
+    {
+      ScopeGuard output_guard(net, "output_buffer");
+      return net.TriStateBuffer(read_enable, value);
+    }
+  };
+
+  out.read_port_1 = make_read_port(0, read_addr_1);
+  out.read_port_2 = make_read_port(1, read_addr_2);
 
   return out;
 }
