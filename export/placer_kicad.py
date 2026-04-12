@@ -6,6 +6,8 @@ from absl import flags
 from collections import namedtuple
 import math
 import itertools
+from scipy.spatial import ConvexHull
+import numpy as np
 
 FLAGS = flags.FLAGS
 
@@ -32,27 +34,45 @@ class Cost:
         return f'{self.val()}'
 
 
-def distance_score(transistor: TransistorId, placement: dict[TransistorId,
-                                                             Slot],
-                   group: set[TransistorId]) -> float:
-    t1x, t1y = placement[transistor]
-    dist_min = float('inf')
-    dist_sum = 0
-    cnt = 0
+def degenerate_score(pts):
+    pts = np.array(pts)
+    if len(pts) < 2:
+        return 0.0
+    pts = pts - pts[0]
+    rank = np.linalg.matrix_rank(pts, tol=1e-9)
+    if rank > 1:
+        return None
 
+    diff = np.max(pts, axis=0) - np.min(pts, axis=0)
+    return np.sqrt(np.sum(diff**2))
+
+
+score_cache = dict()
+
+
+def distance_score(placement: dict[TransistorId, Slot],
+                   group: set[TransistorId]) -> float:
+    pts = []
     for b in group:
-        if transistor == b:
-            continue
         if b not in placement:
             continue
-        t2x, t2y = placement[b]
-        dist = math.sqrt((t1x - t2x)**2 + (t1y - t2y)**2)
-        dist_min = min(dist, dist_min)
-        dist_sum += dist
-        cnt += 1
+        tx, ty = placement[b]
+        pts.append([tx, ty])
 
-    # Add the average distance with a small weight for more compactness.
-    return dist_min + (dist_sum / cnt * 0.1)
+    pts_set = frozenset([(x, y) for x, y in pts])
+    if pts_set in score_cache:
+        return score_cache[pts_set]
+
+    degen_score = degenerate_score(pts)
+    if degen_score is not None:
+        score = degen_score
+    else:
+        hull = ConvexHull(points=pts)
+        # volume: area, area: perimeter
+        score = hull.volume * 2 + hull.area
+
+    score_cache[pts_set] = score
+    return score
 
 
 def cost(placement: dict[TransistorId, Slot],
@@ -61,7 +81,7 @@ def cost(placement: dict[TransistorId, Slot],
     for t1 in placement.keys():
         # TODO: connected to something outside the group -> should be on the edge?
         for g in nets[t1]:
-            dist += distance_score(t1, placement, g)
+            dist += distance_score(placement, g)
 
     return Cost(dist)
 
@@ -187,6 +207,7 @@ def main(argv):
         print(len(slots), len(group))
         row += 10
 
+        score_cache = dict()
         placement |= optimize_placement(
             group, slots, lambda placement: cost(placement, transistor_nets))
 

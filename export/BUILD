@@ -42,6 +42,7 @@ py_binary(
         "@abseil-py//absl/flags",
         "@abseil-py//absl:app",
         "@pip_deps//kicad_python",
+        "@pip_deps//scipy",
     ],
     imports = ["."],
 )
