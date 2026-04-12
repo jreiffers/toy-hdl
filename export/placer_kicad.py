@@ -1,10 +1,13 @@
 from kipy import KiCad
+
 from kipy.geometry import Vector2, Angle
 from absl import app
 from absl import flags
 from collections import namedtuple
 import math
 import itertools
+import disjoint_set
+
 
 FLAGS = flags.FLAGS
 
@@ -15,55 +18,19 @@ from util import get_connections, group_transistors, normalize, open_net
 Slot = namedtuple('Slot', ['x', 'y'])
 TransistorId = str
 
-# Cost of a wire crossing.
-CROSSING_COST = 20
-
-
-def sign(x):
-    return -1 if x < 0 else (1 if x > 1 else 0)
-
-
-# intersection logic adapted from https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
-def lines_intersect(a, b):
-
-    def on_segment(p, q, r):
-        return (q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0])
-                and q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1]))
-
-    def orientation(p, q, r):
-        return sign((q[1] - p[1]) * (r[0] - q[0]) - \
-                    (q[0] - p[0]) * (r[1] - q[1]))
-
-    o1 = orientation(a[0], a[1], b[0])
-    o2 = orientation(a[0], a[1], b[1])
-    o3 = orientation(b[0], b[1], a[0])
-    o4 = orientation(b[0], b[1], a[1])
-
-    return (o1 != o2 and o3 != o4) or \
-           (o1 == 0 and on_segment(a[0], b[0], a[1])) or \
-           (o2 == 0 and on_segment(a[0], b[1], a[1])) or \
-           (o3 == 0 and on_segment(b[0], a[0], b[1])) or \
-           (o4 == 0 and on_segment(b[0], a[1], b[1]))
-
-
-assert (lines_intersect(((0, 0), (10, 10)), ((10, 0), (0, 10))))
-assert (not lines_intersect(((0, 0), (10, 10)), ((20, 20), (30, 30))))
-
-
 class Cost:
 
-    def __init__(self, distance, num_intersections):
+    def __init__(self, distance):
         self.distance = distance
-        self.num_intersections = num_intersections
 
     def val(self):
-        return self.distance + self.num_intersections * CROSSING_COST
+        return self.distance
 
     def __lt__(self, other):
         return self.val() < other.val()
 
     def __repr__(self):
-        return f'{self.val()} ({self.distance}, {self.num_intersections})'
+        return f'{self.val()}'
 
 
 def cost(placement: dict[TransistorId, Slot],
@@ -71,7 +38,6 @@ def cost(placement: dict[TransistorId, Slot],
     # This is all kind of wrong. Connections aren't really part to part in the way it's represented here -
     # I should be looking at sets of connected transistors instead.
     dist = 0
-    segments = []
     for t1, (t1x, t1y) in placement.items():
         for t2 in connections[t1]:
             if t2 not in placement:
@@ -81,16 +47,7 @@ def cost(placement: dict[TransistorId, Slot],
             (t2x, t2y) = placement[t2]
             dist += math.sqrt((t1x - t2x)**2 + (t1y - t2y)**2)
 
-            segments.append(((t1x, t1y), (t2x, t2y)))
-
-    # This intersection logic is also wrong. Many of the intersections are just endpoints being the same.
-    num_intersections = 0
-    for i, s1 in enumerate(segments):
-        for s2 in segments[i + 1:]:
-            if lines_intersect(s1, s2):
-                num_intersections += 1
-
-    return Cost(dist, num_intersections)
+    return Cost(dist)
 
 
 def swap_two(placement: dict[TransistorId, Slot]):
