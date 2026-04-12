@@ -76,11 +76,23 @@ GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
 
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
                                    GateTerminal clk, GateTerminal reset) {
-  // TODO: The classical D flip flop should be more efficient in terms of
-  // transistor use than the master-slave one.
-  auto q = MakeGatedDLatch(net, d, clk, reset)[0];
   auto not_clk = net.Not(clk);
-  return MakeGatedDLatch(net, q, not_clk, reset);
+  auto not_reset = net.Not(reset);
+
+  GateTerminal g0 = net.Nand({d, kHighGate, not_reset});
+  GateTerminal g1 = net.Nand({g0, not_clk, kHighGate});
+  GateTerminal g2 = net.Nand({not_reset, not_clk, kHighGate});
+  GateTerminal g3 = net.Nand({g0, g2});
+
+  GateTerminal g4 = net.Nand({not_reset, g1, kHighGate});
+  GateTerminal g5 = net.Nand({g2, g4});
+
+  g0.first->SetInput(1, g1);
+  g1.first->SetInput(2, g2);
+  g2.first->SetInput(2, g3);
+  g4.first->SetInput(2, g5);
+
+  return {g5, g4};
 }
 
 constexpr int kMaxOutputs = 128;
