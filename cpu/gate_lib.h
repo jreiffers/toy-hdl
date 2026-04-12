@@ -70,6 +70,7 @@ struct Gate {
   bool operator<(const Gate& rhs) const;
 
   const std::vector<std::string>& scope() const { return scope_; }
+  std::vector<std::string>& scope() { return scope_; }
   void set_scope(std::vector<std::string> scope) { scope_ = std::move(scope); }
 
  private:
@@ -206,13 +207,7 @@ struct GateNetwork {
   }
 
   template <int bw>
-  GateReg<bw> Mux(GateTerminal sel, GateReg<bw> low, GateReg<bw> high) {
-    GateReg<bw> out;
-    for (int i = 0; i < bw; ++i) {
-      out[i] = Mux(sel, low[i], high[i]);
-    }
-    return out;
-  }
+  GateReg<bw> Mux(GateTerminal sel, GateReg<bw> low, GateReg<bw> high);
 
   template <int bw>
   GateReg<bw> Xor(GateReg<bw> lhs, GateReg<bw> rhs) {
@@ -304,6 +299,18 @@ std::pair<GateReg<bw>, GateTerminal /* carry */> MakeAdder(
     carry = partial[1];
   }
   return {result, carry};
+}
+
+template <int bw>
+GateReg<bw> GateNetwork::Mux(GateTerminal sel, GateReg<bw> low,
+                             GateReg<bw> high) {
+  ScopeGuard guard(*this, "mux");
+  GateReg<bw> out;
+  for (int i = 0; i < bw; ++i) {
+    ScopeGuard guard(*this, absl::StrCat("bit", i));
+    out[i] = Mux(sel, low[i], high[i]);
+  }
+  return out;
 }
 
 GateReg<2> /*q, ~q*/ MakeSrLatch(GateNetwork& net, GateTerminal s,
