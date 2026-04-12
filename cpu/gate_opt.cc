@@ -58,6 +58,23 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
         changed = true;
       }
 
+      if (gate.num_inputs() == 0) {
+        if (gate.kind() == GateKind::kNor) {
+          gate.ReplaceAllUsesWith(kHighGate);
+          changed = true;
+        } else if (gate.kind() == GateKind::kNand) {
+          gate.ReplaceAllUsesWith(kLowGate);
+          changed = true;
+        }
+      }
+
+      if (gate.kind() == GateKind::kTriStateBuffer) {
+        if (gate.input(0) == kHighGate) {
+          gate.ReplaceAllUsesWith(gate.input(2));
+          changed = true;
+        }
+      }
+
       if (gate.num_inputs() == 2) {
         if (gate.kind() == GateKind::kNor) {
           if (auto a = SkipNot(gate, 0), b = SkipNot(gate, 1); a && b) {

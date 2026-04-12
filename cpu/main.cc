@@ -52,14 +52,14 @@ void BuildPcGen(GateNetwork& net) {
   net.DeclareOutput(pcgen.next_pc);
 }
 
-template <int bw>
+template <int bw, int addrbits>
 void BuildRegister(GateNetwork& net) {
   auto reset = net.AddInput<1>("reset");
   auto clk = net.AddInput<1>("clk");
-  auto register_addr = net.AddInput<2>("addr");
-  auto read_addr_1 = net.AddInput<2>("rd_addr1");
-  auto read_addr_2 = net.AddInput<2>("rd_addr2");
-  auto write_addr = net.AddInput<2>("wr_addr");
+  auto register_addr = net.AddInput<addrbits>("addr");
+  auto read_addr_1 = net.AddInput<addrbits>("rd_addr1");
+  auto read_addr_2 = net.AddInput<addrbits>("rd_addr2");
+  auto write_addr = net.AddInput<addrbits>("wr_addr");
   auto write_data = net.AddInput<bw>("wr_data");
   auto reg = MakeRegister(net, reset, clk, register_addr, read_addr_1,
                           read_addr_2, write_addr, write_data);
@@ -85,9 +85,11 @@ int main(int argc, char* argv[]) {
   } else if (mod == "pcgen") {
     BuildPcGen(net);
   } else if (mod == "register") {
-    BuildRegister<4>(net);
+    BuildRegister<4, 2>(net);
   } else if (mod == "register1") {
-    BuildRegister<1>(net);
+    BuildRegister<1, 2>(net);
+  } else if (mod == "pc") {
+    BuildRegister<5, 0>(net);
   } else if (mod == "mux") {
     auto a = net.AddInput<1>("a");
     auto b = net.AddInput<1>("b");
