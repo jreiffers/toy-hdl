@@ -76,15 +76,12 @@ GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
 
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
                                    GateTerminal clk, GateTerminal reset) {
-  auto not_clk = net.Not(clk);
-  auto not_reset = net.Not(reset);
-
-  GateTerminal g0 = net.Nand({d, kHighGate, not_reset});
-  GateTerminal g1 = net.Nand({g0, not_clk, kHighGate});
-  GateTerminal g2 = net.Nand({not_reset, not_clk, kHighGate});
+  GateTerminal g0 = net.Nand({d, kHighGate, reset});
+  GateTerminal g1 = net.Nand({g0, clk, kHighGate});
+  GateTerminal g2 = net.Nand({reset, clk, kHighGate});
   GateTerminal g3 = net.Nand({g0, g2});
 
-  GateTerminal g4 = net.Nand({not_reset, g1, kHighGate});
+  GateTerminal g4 = net.Nand({reset, g1, kHighGate});
   GateTerminal g5 = net.Nand({g2, g4});
 
   g0.first->SetInput(1, g1);

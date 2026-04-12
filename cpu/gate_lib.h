@@ -320,9 +320,9 @@ GateReg<2> /*q, ~q*/ MakeGatedSrLatch(GateNetwork& net, GateTerminal s,
                                       GateTerminal reset);
 GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
                                      GateTerminal e, GateTerminal reset);
-// Stores on falling clk edge.
+// Stores on rising clk edge. Reset is active low.
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
                                    GateTerminal clk,
-                                   GateTerminal reset = kLowGate);
+                                   GateTerminal reset = kHighGate);
 
 #endif

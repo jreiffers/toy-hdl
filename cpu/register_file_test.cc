@@ -30,8 +30,8 @@ TEST(RegisterTest, Test) {
                   uint32_t wa, uint32_t wdata) {
     EXPECT_THAT(
         EvaluateStep(net, state,
-                     {static_cast<uint32_t>(reset),
-                      static_cast<uint32_t>(clock), ra1, ra2, wa, wdata}),
+                     {static_cast<uint32_t>(!reset),
+                      static_cast<uint32_t>(!clock), ra1, ra2, wa, wdata}),
         IsOk());
   };
 

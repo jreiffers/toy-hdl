@@ -159,7 +159,7 @@ TEST(EvalTest, EvalDFlipFlop) {
   auto d = net.AddInput<1>()[0];
   auto clk = net.AddInput<1>()[0];
   auto reset = net.AddInput<1>()[0];
-  auto q = MakeDFlipFlop(net, d, clk, reset)[0];
+  auto q = MakeDFlipFlop(net, d, net.Not(clk), net.Not(reset))[0];
 
   std::unordered_map<GateTerminal, GateTerminalState> state;
   EXPECT_THAT(EvaluateStep(net, state, {1, 1, 0}), IsOk());
