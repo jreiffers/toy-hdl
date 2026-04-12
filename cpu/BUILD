@@ -116,8 +116,37 @@ cc_library(
 )
 
 cc_test(
-    name = "cpu_modules_test",
-    srcs = ["alu_test.cc", "pcgen_test.cc", "register_file_test.cc"],
+    name = "alu_test",
+    srcs = ["alu_test.cc"],
+    deps = [
+        ":cpu_modules",
+        ":eval",
+        ":gate_opt",
+        ":lower_gates",
+        ":compiler",
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:status_matchers",
+    ],
+)
+
+
+cc_test(
+    name = "pcgen_test",
+    srcs = ["pcgen_test.cc"],
+    deps = [
+        ":cpu_modules",
+        ":eval",
+        ":gate_opt",
+        ":lower_gates",
+        ":compiler",
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:status_matchers",
+    ],
+)
+
+cc_test(
+    name = "register_file_test",
+    srcs = ["register_file_test.cc"],
     deps = [
         ":cpu_modules",
         ":eval",
