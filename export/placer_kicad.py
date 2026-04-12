@@ -8,6 +8,7 @@ import math
 import itertools
 from scipy.spatial import ConvexHull
 import numpy as np
+from collections.abc import Callable
 
 FLAGS = flags.FLAGS
 
@@ -50,13 +51,15 @@ def degenerate_score(pts):
 score_cache = dict()
 
 
-def distance_score(placement: dict[TransistorId, Slot],
+def distance_score(placement: Callable[[TransistorId],
+                                       tuple[float, float] | None],
                    group: set[TransistorId]) -> float:
     pts = []
     for b in group:
-        if b not in placement:
+        pos = placement(b)
+        if pos is None:
             continue
-        tx, ty = placement[b]
+        tx, ty = pos
         pts.append([tx, ty])
 
     pts_set = frozenset([(x, y) for x, y in pts])
@@ -69,19 +72,18 @@ def distance_score(placement: dict[TransistorId, Slot],
     else:
         hull = ConvexHull(points=pts)
         # volume: area, area: perimeter
-        score = hull.volume * 2 + hull.area
+        score = hull.volume + hull.area
 
     score_cache[pts_set] = score
     return score
 
 
-def cost(placement: dict[TransistorId, Slot],
-         nets: dict[TransistorId, list[set[TransistorId]]]):
+def cost(placement: dict[TransistorId, Slot], groups: list[set[TransistorId]]):
     dist = 0
-    for t1 in placement.keys():
-        # TODO: connected to something outside the group -> should be on the edge?
-        for g in nets[t1]:
-            dist += distance_score(placement, g)
+    # TODO: connected to something outside the group -> should be on the edge?
+    for g in groups:
+        dist += distance_score(
+            lambda t: placement[t] if t in placement else None, g)
 
     return Cost(dist)
 
@@ -181,35 +183,33 @@ def generate_grid_slots(rows: int, cols: int, center_to_center_dist: float,
 def main(argv):
     net = open_net(FLAGS.input)
 
-    transistor_nets = group_transistor_nets(net)
-    groups = group_transistors_by_hierarchy(net)
+    flat_groups = group_transistor_nets(net)
     conns = get_connections(net)
 
     rows_cols = dict()
-    flat_groups: list[list[TransistorId]] = []
+    flat_hierarchy: list[list[TransistorId]] = []
 
-    def distribute_transistors(group):
+    def flatten_hierarchy(group):
         for (name, subgroup) in group["children"].items():
-            distribute_transistors(subgroup)
+            flatten_hierarchy(subgroup)
 
         this_group = [normalize(id) for id in group["transistors"].keys()]
         if this_group:
-            flat_groups.append(this_group)
+            flat_hierarchy.append(this_group)
 
-    distribute_transistors(groups)
+    flatten_hierarchy(group_transistors_by_hierarchy(net))
 
     placement = dict()
-    cont = True
     row = 0
 
-    for group in flat_groups:
+    for group in flat_hierarchy:
         slots = generate_hex_slots(len(group), 5, Slot(0, row * 5))
         print(len(slots), len(group))
         row += 10
 
         score_cache = dict()
         placement |= optimize_placement(
-            group, slots, lambda placement: cost(placement, transistor_nets))
+            group, slots, lambda placement: cost(placement, flat_groups))
 
     kicad = KiCad()
     board = kicad.get_board()
