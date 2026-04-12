@@ -6,17 +6,16 @@ from absl import flags
 from collections import namedtuple
 import math
 import itertools
-import disjoint_set
-
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('input', '', 'Serialized netlist file.')
 
-from util import get_connections, group_transistors, normalize, open_net
+from util import get_connections, group_transistors_by_hierarchy, group_transistor_nets, normalize, open_net
 
 Slot = namedtuple('Slot', ['x', 'y'])
 TransistorId = str
+
 
 class Cost:
 
@@ -33,19 +32,36 @@ class Cost:
         return f'{self.val()}'
 
 
-def cost(placement: dict[TransistorId, Slot],
-         connections: dict[TransistorId, set[TransistorId]]):
-    # This is all kind of wrong. Connections aren't really part to part in the way it's represented here -
-    # I should be looking at sets of connected transistors instead.
-    dist = 0
-    for t1, (t1x, t1y) in placement.items():
-        for t2 in connections[t1]:
-            if t2 not in placement:
-                continue
+def distance_score(transistor: TransistorId, placement: dict[TransistorId,
+                                                             Slot],
+                   group: set[TransistorId]) -> float:
+    t1x, t1y = placement[transistor]
+    dist_min = float('inf')
+    dist_sum = 0
+    cnt = 0
 
-            # TODO: connected to something outside the group -> should be on the edge?
-            (t2x, t2y) = placement[t2]
-            dist += math.sqrt((t1x - t2x)**2 + (t1y - t2y)**2)
+    for b in group:
+        if transistor == b:
+            continue
+        if b not in placement:
+            continue
+        t2x, t2y = placement[b]
+        dist = math.sqrt((t1x - t2x)**2 + (t1y - t2y)**2)
+        dist_min = min(dist, dist_min)
+        dist_sum += dist
+        cnt += 1
+
+    # Add the average distance with a small weight for more compactness.
+    return dist_min + (dist_sum / cnt * 0.1)
+
+
+def cost(placement: dict[TransistorId, Slot],
+         nets: dict[TransistorId, list[set[TransistorId]]]):
+    dist = 0
+    for t1 in placement.keys():
+        # TODO: connected to something outside the group -> should be on the edge?
+        for g in nets[t1]:
+            dist += distance_score(t1, placement, g)
 
     return Cost(dist)
 
@@ -144,7 +160,9 @@ def generate_grid_slots(rows: int, cols: int, center_to_center_dist: float,
 
 def main(argv):
     net = open_net(FLAGS.input)
-    groups = group_transistors(net)
+
+    transistor_nets = group_transistor_nets(net)
+    groups = group_transistors_by_hierarchy(net)
     conns = get_connections(net)
 
     rows_cols = dict()
@@ -170,7 +188,7 @@ def main(argv):
         row += 10
 
         placement |= optimize_placement(
-            group, slots, lambda placement: cost(placement, conns))
+            group, slots, lambda placement: cost(placement, transistor_nets))
 
     kicad = KiCad()
     board = kicad.get_board()

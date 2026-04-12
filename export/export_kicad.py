@@ -7,7 +7,7 @@ from absl import app
 from absl import flags
 import cpu.format_pb2 as s
 from skidl import *
-from util import group_transistors, open_net
+from util import group_transistors_by_hierarchy, open_net
 
 FLAGS = flags.FLAGS
 
@@ -76,6 +76,7 @@ def init_skidl_nets(net):
 
     return nets, header_nets
 
+
 def generate(net):
     n = Part("Transistor_FET",
              "2N7002",
@@ -90,7 +91,7 @@ def generate(net):
     def emit_transistors(group, path='/'):
         for (name, subgroup) in group["children"].items():
             with SubCircuit(name):
-                emit_transistors(subgroup, path+name+'/')
+                emit_transistors(subgroup, path + name + '/')
         for id, t in group["transistors"].items():
             # TODO: Chip selection - if src is not vss/vdd, a CD4007 is probably needed.
             if t.kind == s.Transistor.Kind.kNChannel:
@@ -109,7 +110,7 @@ def generate(net):
             nets[f"{id}.s"] = transistor["S"]
             nets[f"{id}.d"] = transistor["D"]
 
-    emit_transistors(group_transistors(net))
+    emit_transistors(group_transistors_by_hierarchy(net))
 
     def get_net(name):
         assert name in nets, f'net {name} not found'

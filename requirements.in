@@ -1,2 +1,3 @@
 skidl
 kicad-python
+disjoint-set==0.9.0

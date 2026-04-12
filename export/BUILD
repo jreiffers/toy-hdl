@@ -3,6 +3,7 @@ py_library(
     srcs = ["util.py"],
     deps = [
         "//cpu:format_py_proto",
+        "@pip_deps//disjoint_set",
     ],
 )
 
