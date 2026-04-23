@@ -17,7 +17,10 @@ cc_library(
     deps = [
       ":gate_lib",
       ":transistor_lib",
+      ":export",
       "@abseil-cpp//absl/algorithm:container",
+      "@abseil-cpp//absl/container:flat_hash_set",
+      "@abseil-cpp//absl/container:flat_hash_map",
       "@abseil-cpp//absl/status:status",
     ],
 )
@@ -156,6 +159,7 @@ cc_test(
         "@googletest//:gtest_main",
         "@abseil-cpp//absl/status:status_matchers",
     ],
+    shard_count = 10,
 )
 
 cc_test(

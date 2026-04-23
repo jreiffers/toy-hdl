@@ -79,9 +79,11 @@ void print_graphviz(const Network& net) {
   std::cout << "}\n";
 }
 
-void print_graphviz(GateNetwork& net,
-                    const std::unordered_map<GateTerminal, bool>& colors) {
-  std::unordered_map<Gate*, int> ids;
+void print_graphviz(
+    GateNetwork& net,
+    const absl::flat_hash_map<GateTerminal, std::optional<bool>>& colors,
+    std::ostream& stream) {
+  absl::flat_hash_map<Gate*, int> ids;
   auto terminal_node = [&](GateTerminal t) -> std::string {
     if (t == kLowGate) {
       return "false";
@@ -96,80 +98,80 @@ void print_graphviz(GateNetwork& net,
     return os.str();
   };
 
-  std::cout << "digraph d {\n";
+  stream << "digraph d {\n";
   net.WalkUnordered([&](int id, Gate& gate) {
     int d = 2;
     for (const auto& scope : gate.scope()) {
-      std::cout << std::string(d, ' ') << "subgraph cluster_" << scope
-                << " {\n";
-      std::cout << std::string(d, ' ') << "  label = \"" << scope << "\";\n";
+      stream << std::string(d, ' ') << "subgraph cluster_" << scope << " {\n";
+      stream << std::string(d, ' ') << "  label = \"" << scope << "\";\n";
       d += 2;
     }
 
-    std::cout << std::string(d, ' ') << "subgraph cluster_g" << id << " {\n";
+    stream << std::string(d, ' ') << "subgraph cluster_g" << id << " {\n";
     d += 2;
 
     auto color = colors.find(gate.output());
     if (color != colors.end()) {
-      std::cout << std::string(d, ' ') << "style = \"filled\";\n";
-      std::cout << std::string(d, ' ') << "color = \"";
+      stream << std::string(d, ' ') << "style = \"filled\";\n";
+      stream << std::string(d, ' ') << "color = \"";
       if (color->second) {
-        std::cout << "blue";
+        if (color->second.value()) {
+          stream << "blue";
+        } else {
+          stream << "red";
+        }
       } else {
-        std::cout << "red";
+        stream << "gray";
       }
-      std::cout << "\";\n";
+      stream << "\";\n";
     }
-    std::cout << std::string(d, ' ') << "label = \"" << to_string(gate)
-              << "\";\n";
+    stream << std::string(d, ' ') << "label = \"" << to_string(gate) << "\";\n";
     for (int j = 0; j < gate.num_inputs(); ++j) {
-      std::cout << std::string(d, ' ') << "g" << id << "i" << j
-                << " [label = \"i" << j << "\"];";
+      stream << std::string(d, ' ') << "g" << id << "i" << j << " [label = \"i"
+             << j << "\"];";
     }
     for (int j = 0; j < gate.num_outputs(); ++j) {
-      std::cout << std::string(d, ' ') << terminal_node(gate.output(j))
-                << " [label = \"o" << j << "\"];\n";
+      stream << std::string(d, ' ') << terminal_node(gate.output(j))
+             << " [label = \"o" << j << "\"];\n";
     }
     while (d > 2) {
       d -= 2;
-      std::cout << std::string(d, ' ') << "}\n";
+      stream << std::string(d, ' ') << "}\n";
     }
   });
 
   net.WalkUnordered([&](int id, Gate& gate) {
     for (int i = 0; i < gate.num_inputs(); ++i) {
-      std::cout << "    " << terminal_node(gate.input(i)) << " -> g" << id
-                << "i" << i << ";\n";
+      stream << "    " << terminal_node(gate.input(i)) << " -> g" << id << "i"
+             << i << ";\n";
     }
   });
 
   for (int i = 0; i < net.num_inputs(); ++i) {
     auto input = net.GetInput(i);
     for (int b = 0; b < input.bitwidth(); ++b) {
-      std::cout << terminal_node(input[b]) << " [label = \""
-                << net.input_label(i);
+      stream << terminal_node(input[b]) << " [label = \"" << net.input_label(i);
       if (input.bitwidth() > 1) {
-        std::cout << "_" << b;
+        stream << "_" << b;
       }
-      std::cout << "\"];\n";
+      stream << "\"];\n";
     }
   }
 
   for (int i = 0; i < net.num_outputs(); ++i) {
     auto output = net.GetOutput(i);
     for (int b = 0; b < output.bitwidth(); ++b) {
-      std::cout << terminal_node(output[b]) << "->" << "o" << i << "_" << b
-                << ";\n";
-      std::cout << "o" << i << "_" << b << " [label = \""
-                << net.output_label(i);
+      stream << terminal_node(output[b]) << "->" << "o" << i << "_" << b
+             << ";\n";
+      stream << "o" << i << "_" << b << " [label = \"" << net.output_label(i);
       if (output.bitwidth() > 1) {
-        std::cout << "_" << b;
+        stream << "_" << b;
       }
-      std::cout << "\"];\n";
+      stream << "\"];\n";
     }
   }
 
-  std::cout << "}\n";
+  stream << "}\n";
 }
 
 void print_ngspice(const Network& net, NodeId out) {
@@ -214,7 +216,7 @@ toyhdl::serialization::Network ExportNetlist(const Network& net) {
   namespace s = toyhdl::serialization;
   std::cout << "{";
 
-  std::unordered_map<NodeId, std::string> input_names;
+  absl::flat_hash_map<NodeId, std::string> input_names;
 
   auto convert_list = [](auto* out, int num, auto generate_item) {
     for (int i = 0; i < num; ++i) {

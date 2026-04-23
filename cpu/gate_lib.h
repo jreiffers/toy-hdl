@@ -229,16 +229,7 @@ struct GateNetwork {
   }
 
   template <int bw>
-  GateReg<bw> TriStateBuffer(GateTerminal enable, GateReg<bw> value) {
-    auto not_enable = Not(enable);
-    GateReg<bw> out;
-    for (int i = 0; i < bw; ++i) {
-      out[i] =
-          AddGate(GateKind::kTriStateBuffer, {enable, not_enable, value[i]})
-              .output();
-    }
-    return out;
-  }
+  GateReg<bw> TriStateBuffer(GateTerminal enable, GateReg<bw> value);
 
   void WalkUnordered(
       const std::function<void(int id, const Gate& gate)>& fn) const;
@@ -313,6 +304,20 @@ GateReg<bw> GateNetwork::Mux(GateTerminal sel, GateReg<bw> low,
   for (int i = 0; i < bw; ++i) {
     ScopeGuard guard(*this, absl::StrCat("bit", i));
     out[i] = Mux(sel, low[i], high[i]);
+  }
+  return out;
+}
+
+template <int bw>
+GateReg<bw> GateNetwork::TriStateBuffer(GateTerminal enable,
+                                        GateReg<bw> value) {
+  ScopeGuard guard(*this, "buffer");
+  auto not_enable = Not(enable);
+  GateReg<bw> out;
+  for (int i = 0; i < bw; ++i) {
+    ScopeGuard guard(*this, absl::StrCat("bit", i));
+    out[i] = AddGate(GateKind::kTriStateBuffer, {enable, not_enable, value[i]})
+                 .output();
   }
   return out;
 }

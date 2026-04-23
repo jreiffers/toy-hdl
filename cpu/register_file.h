@@ -27,6 +27,7 @@ RegisterOutput<bw> MakeRegister(GateNetwork& net, GateReg<1> reset,
   {
     ScopeGuard guard(net, "write_enable");
     write_enable = net.Eq(my_addr, write_addr);
+    write_enable.first->set_output_tag("value");
   }
 
   GateReg<bw> muxes;
@@ -51,12 +52,10 @@ RegisterOutput<bw> MakeRegister(GateNetwork& net, GateReg<1> reset,
     {
       ScopeGuard re_guard(net, "read_enable");
       read_enable = net.Eq(my_addr, read_addr);
+      read_enable.first->set_output_tag("value");
     }
 
-    {
-      ScopeGuard output_guard(net, "output_buffer");
-      return net.TriStateBuffer(read_enable, value);
-    }
+    return net.TriStateBuffer(read_enable, value);
   };
 
   out.read_port_1 = make_read_port(0, read_addr_1);

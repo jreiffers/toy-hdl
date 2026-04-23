@@ -1,0 +1,2 @@
+test -c opt --copt=-g --copt=-fno-omit-frame-pointer
+build -c opt --copt=-g --copt=-fno-omit-frame-pointer

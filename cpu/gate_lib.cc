@@ -76,11 +76,16 @@ GateReg<2> /*q, ~q*/ MakeGatedDLatch(GateNetwork& net, GateTerminal d,
 
 GateReg<2> /*q, ~q*/ MakeDFlipFlop(GateNetwork& net, GateTerminal d,
                                    GateTerminal clk, GateTerminal reset) {
-  GateTerminal g0 = net.Nand({d, kHighGate, reset});
-  GateTerminal g1 = net.Nand({g0, clk, kHighGate});
-  GateTerminal g2 = net.Nand({reset, clk, kHighGate});
-  GateTerminal g3 = net.Nand({g0, g2});
+  GateTerminal g0, g1, g2, g3;
+  {
+    ScopeGuard g(net, "stage0");
+    g0 = net.Nand({d, kHighGate, reset});
+    g1 = net.Nand({g0, clk, kHighGate});
+    g2 = net.Nand({reset, clk, kHighGate});
+    g3 = net.Nand({g0, g2});
+  }
 
+  ScopeGuard g(net, "stage1");
   GateTerminal g4 = net.Nand({reset, g1, kHighGate});
   GateTerminal g5 = net.Nand({g2, g4});
 

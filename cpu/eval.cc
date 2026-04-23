@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -24,8 +25,8 @@ std::string to_string(PinState state) {
   }
 }
 
-std::unordered_map<NodeId, PinState> Evaluate(
-    const Network& net, std::unordered_map<NodeId, PinState> inputs) {
+absl::flat_hash_map<NodeId, PinState> Evaluate(
+    const Network& net, absl::flat_hash_map<NodeId, PinState> inputs) {
   inputs[kVdd] = PinState::kHigh;
   inputs[kVss] = PinState::kLow;
 
@@ -106,8 +107,8 @@ namespace {
 
 bool EvaluateAllRec(
     const Network& net,
-    std::function<bool(const std::unordered_map<NodeId, PinState>&)> callback,
-    int next_input, std::unordered_map<NodeId, PinState> state) {
+    std::function<bool(const absl::flat_hash_map<NodeId, PinState>&)> callback,
+    int next_input, absl::flat_hash_map<NodeId, PinState> state) {
   if (next_input == -1) {
     state = Evaluate(net, std::move(state));
     if (!callback(state)) return false;
@@ -131,7 +132,7 @@ std::optional<std::vector<uint32_t>> EvaluateAll(
   assert(outputs.size() <= 32);
 
   std::vector<uint32_t> out;
-  auto callback = [&](const std::unordered_map<NodeId, PinState>& state) {
+  auto callback = [&](const absl::flat_hash_map<NodeId, PinState>& state) {
     uint32_t& out_bitstring = out.emplace_back();
     for (int i = 0; i < outputs.size(); ++i) {
       PinState out_state = state.at(outputs[i]);
@@ -153,7 +154,7 @@ std::optional<std::vector<uint32_t>> EvaluateAll(
 
 void PrintTruthTable(const Network& net, const std::vector<NodeId>& outputs,
                      int next_input,
-                     std::unordered_map<NodeId, PinState> state) {
+                     absl::flat_hash_map<NodeId, PinState> state) {
   if (next_input == net.num_input_bits()) {
     state = Evaluate(net, std::move(state));
     for (int i = 0; i < net.num_input_bits(); ++i) {
@@ -183,7 +184,7 @@ absl::Status VerifySpec(const Network& net, absl::Span<const dyn_reg> outputs,
   }
 
   std::vector<std::string> errors;
-  auto encode_num = [&](const std::unordered_map<NodeId, PinState>& state,
+  auto encode_num = [&](const absl::flat_hash_map<NodeId, PinState>& state,
                         const dyn_reg& reg) -> std::optional<uint32_t> {
     uint32_t result = 0;
     for (int b = 0; b < reg.bitwidth(); ++b) {
@@ -205,7 +206,7 @@ absl::Status VerifySpec(const Network& net, absl::Span<const dyn_reg> outputs,
     return result;
   };
 
-  auto callback = [&](const std::unordered_map<NodeId, PinState>& state) {
+  auto callback = [&](const absl::flat_hash_map<NodeId, PinState>& state) {
     auto encode_nums = [&](absl::Span<const dyn_reg> regs) {
       absl::InlinedVector<uint32_t, 4> ret;
       for (const auto& reg : regs) {
@@ -253,7 +254,7 @@ absl::Status VerifySpec(const GateNetwork& net,
     return absl::InvalidArgumentError("Too many input bits.");
   }
 
-  std::unordered_map<GateTerminal, bool> vals;
+  absl::flat_hash_map<GateTerminal, bool> vals;
 
   std::vector<std::string> errors;
   std::function<bool(uint32_t, GateTerminal)> get;
@@ -407,12 +408,12 @@ absl::Status VerifySpec(const GateNetwork& net,
 
 absl::Status EvaluateStep(
     const GateNetwork& net,
-    std::unordered_map<GateTerminal, GateTerminalState>& state,
+    absl::flat_hash_map<GateTerminal, GateTerminalState>& state,
     absl::Span<const uint32_t> inputs) {
   if (inputs.size() != net.num_inputs()) {
     return absl::InvalidArgumentError("Mismatched number of inputs.");
   }
-  std::unordered_set<GateTerminal> seen;
+  absl::flat_hash_set<GateTerminal> seen;
   std::deque<GateTerminal> queue;
 
   using GateTerminalState::kHigh;
@@ -550,4 +551,31 @@ absl::Status EvaluateStep(
   // TODO check if all outputs are determined?
 
   return absl::OkStatus();
+}
+
+std::optional<uint32_t> GetNum(
+    GateNetwork& net,
+    const absl::flat_hash_map<GateTerminal, GateTerminalState>& state,
+    int output_index) {
+  auto reg = net.GetOutput(output_index);
+  assert(reg.bitwidth() <= 32);
+  uint32_t res = 0;
+  bool result_is_high_z = false;
+  for (int i = 0; i < reg.bitwidth(); ++i) {
+    GateTerminalState s = state.at(reg[i]);
+    if (result_is_high_z) {
+      assert(s == GateTerminalState::kZ);
+      continue;
+    }
+    if (s == GateTerminalState::kZ) {
+      assert(i == 0);
+      result_is_high_z = true;
+    }
+    if (s == GateTerminalState::kHigh) {
+      res |= 1ul << i;
+    }
+  }
+
+  if (result_is_high_z) return std::nullopt;
+  return res;
 }

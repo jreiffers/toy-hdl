@@ -12,6 +12,7 @@ using ::testing::ElementsAre;
 using ::testing::Optional;
 
 TEST(EvalTest, DetectsShort) {
+  // This is kind of janky. Probably lots of bugs here.
   Network net;
 
   NodeId a = net.make_input(1)[0];
@@ -27,10 +28,10 @@ TEST(EvalTest, DetectsShort) {
 
   net.connect(n.drain(), p.drain());
 
-  std::unordered_map<NodeId, PinState> state{{a, PinState::kLow}};
+  absl::flat_hash_map<NodeId, PinState> state{{a, PinState::kLow}};
   state = Evaluate(net, std::move(state));
 
-  EXPECT_EQ(state[n.drain()], PinState::kShort);
+  EXPECT_EQ(state[n.gate()], PinState::kShort);
 }
 
 TEST(EvalTest, WorksForXor) {
@@ -133,7 +134,7 @@ TEST(EvalTest, EvalSrLatch) {
   auto q = qnotq[0];
   auto notq = qnotq[1];
 
-  std::unordered_map<GateTerminal, GateTerminalState> state;
+  absl::flat_hash_map<GateTerminal, GateTerminalState> state;
   auto expect_state = [&](bool qval) {
     EXPECT_TRUE(state.count(q) &&
                 state[q] == static_cast<GateTerminalState>(qval));
@@ -161,7 +162,7 @@ TEST(EvalTest, EvalDFlipFlop) {
   auto reset = net.AddInput<1>()[0];
   auto q = MakeDFlipFlop(net, d, net.Not(clk), net.Not(reset))[0];
 
-  std::unordered_map<GateTerminal, GateTerminalState> state;
+  absl::flat_hash_map<GateTerminal, GateTerminalState> state;
   EXPECT_THAT(EvaluateStep(net, state, {1, 1, 0}), IsOk());
   EXPECT_THAT(EvaluateStep(net, state, {1, 0, 0}), IsOk());
   ASSERT_TRUE(state.count(q) == 1);
