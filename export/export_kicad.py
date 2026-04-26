@@ -64,7 +64,7 @@ def generate_indicator(nets, net, tag):
              footprint='Resistor_SMD:R_0402_1005Metric')()
     r.tag = f'{tag}/r'
 
-    nets[net] & r & led["A K"] & nets['vss']
+    nets[net] & r & Net(tag) & led["A K"] & nets['vss']
 
 
 def generate_header(nets, header_nets):
@@ -117,7 +117,9 @@ def generate(net):
              "2N7002",
              dest=TEMPLATE,
              footprint='Package_TO_SOT_SMD:SOT-23')
-    p = Part("Transistor_FET", "Si2319CDS", dest=TEMPLATE)
+    n.fields['LCSC Part'] = 'C8545'
+    p = Part("Transistor_FET", "BSS84", dest=TEMPLATE)
+    p.fields['LCSC Part'] = 'C7420340'
 
     nets, header_nets = init_skidl_nets(net)
 
