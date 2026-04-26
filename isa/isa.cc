@@ -187,7 +187,7 @@ int main(int argc, const char* argv[]) {
                               reg_or_mem_to_reg, {I::kAluZeroLhs}));
   C(builder.DefineInstruction("movm", 0'001110'7777_enc,       // [b] = a
                               mem_to_reg, {I::kAluZeroLhs}));  // TODO deref
-  C(builder.DefineInstruction("ldpgio", 0'001111'7777_enc,     // b = gpi [a]
+  C(builder.DefineInstruction("ldgpi", 0'001111'7777_enc,     // b = gpi [a]
                               mem_to_reg, {}));                // TODO
   C(builder.DefineInstruction("testi", 0'01'77777777_enc,      // a <cmp> imm
                               cmp_reg_to_imm, {I::kAluSub}));
