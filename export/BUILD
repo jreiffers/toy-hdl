@@ -46,3 +46,16 @@ py_binary(
     ],
     imports = ["."],
 )
+
+py_binary(
+    name = "place_vias",
+    srcs = ["place_vias.py"],
+    deps = [
+        ":util",
+        "//cpu:format_py_proto",
+        "@abseil-py//absl/flags",
+        "@abseil-py//absl:app",
+        "@pip_deps//kicad_python",
+    ]
+)
+
