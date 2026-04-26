@@ -70,7 +70,7 @@ class IsaBuilder {
     for (uint32_t p = 0; p <= 1 << 10; p += 1 << 10) {  // predicate bit
       for (uint32_t i = 0; i < (1ul << mask.operand_bits); ++i) {
         if (used_[mask.opcode + i + p]) {
-          return absl::InvalidArgumentError("Duplicate bicode.");
+          return absl::InvalidArgumentError("Duplicate bitcode.");
         }
 
         used_[mask.opcode + i + p] = true;
