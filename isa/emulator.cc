@@ -274,7 +274,10 @@ absl::Status Emulator::Op(
     if (!alu_eq) {
       return absl::InvalidArgumentError("attempted to wait with invalid flag.");
     }
-    if (*alu_eq) {
+    if (!f.test_bit_val) {
+      return absl::InvalidArgumentError("testbit is undef.");
+    }
+    if (*alu_eq == *f.test_bit_val) {
       state_.pc = state_.pc + 1;
     }
   } else {

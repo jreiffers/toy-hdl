@@ -59,7 +59,7 @@ class Emulator : private InstructionVisitorWithSemantics<absl::Status> {
   explicit Emulator(absl::Span<const uint16_t> rom) : rom_(rom) {}
 
   absl::Status step();
-  const MachineState& state() { return state_; }
+  MachineState& state() { return state_; }
 
  private:
   absl::Status Op(

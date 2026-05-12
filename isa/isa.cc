@@ -159,7 +159,7 @@ void BuildIsa(IsaBuilder& builder) {
 
   std::vector<std::string> jump{"pred", "jumpaddr"};
   std::vector<std::string> testbit{"pred", "bit", "val", "rhs"};
-  std::vector<std::string> wait{"pred", "val", "src", "dst"};
+  std::vector<std::string> wait{"pred", "val", "rhs", "lhs"};
 
 #define C ABSL_CHECK_OK
   using I = InstrSemantics;
