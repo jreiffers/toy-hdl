@@ -1,2 +1,4 @@
-test -c opt --copt=-march=native --copt=-g --copt=-fno-omit-frame-pointer
-build -c opt --copt=-march=native --copt=-g --copt=-fno-omit-frame-pointer
+test --copt=-march=native --copt=-g --copt=-fno-omit-frame-pointer --cxxopt='-std=c++20'
+build -c opt --copt=-march=native --copt=-g --copt=-fno-omit-frame-pointer --cxxopt='-std=c++20'
+
+build --host_copt=-march=native

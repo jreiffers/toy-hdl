@@ -1,0 +1,100 @@
+#ifndef ISA_H__
+#define ISA_H__
+
+#include <cstdint>
+#include <string_view>
+#include <vector>
+
+namespace isa {
+
+enum class FieldSemantics {
+  kPredication,
+
+  kRegReadAddr0,
+  kRegReadAddr1,
+  kRegWriteAddr,
+
+  kImmediate,
+
+  kAluCmp,
+  kAluLhs,
+  kAluRhs,
+
+  kTestBitIdx,
+  kTestBitVal,
+
+  kDerefSrc,
+
+  kJumpAddr,
+
+  kMemBankIdx,
+};
+
+enum class InstrSemantics {
+  kAluZeroLhs,  // Override the LHS input with 0.
+  kAluNotRhs,   // rhs = ~rhs
+  kAluShr,      // result >>= 1
+  kAluNeg,      // ~result
+  kAluCarryIn,
+
+  kJump,
+  kPushPc,
+  kPopPc,
+
+  kPushReg,
+  kPopReg,
+
+  kStMem,  // Store alu result to address at read port 0.
+  kLdGpi,
+
+  kWait,  //  wait for a-b == testbit
+
+  kFlagGet,  // alu rhs = flag
+  kFlagSet,
+
+  kMemBankSet,
+};
+
+enum class Register {
+  kR0,
+  kR1,
+  kR2,
+  kR3,
+};
+
+enum class Comparator {
+  kEq,
+  kGt,
+  kNe,
+  kLe,
+};
+
+struct Field {
+  uint32_t mask;
+  std::string name;
+  std::string type;
+  std::vector<FieldSemantics> semantics;
+};
+
+struct InstructionMask {
+  uint32_t opcode_mask;
+  uint32_t opcode;
+  int operand_bits;  // Not counting the predication bit.
+};
+
+struct Instruction {
+  std::string_view mnemonic;
+  InstructionMask mask;
+  std::vector<Field> fields;
+  std::vector<InstrSemantics> semantics;
+
+  bool HasField(std::string_view name) const {
+    for (auto& field : fields)
+      if (field.name == name) return true;
+    return false;
+  }
+};
+
+}  // namespace isa
+
+#endif
