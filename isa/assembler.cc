@@ -13,12 +13,12 @@ using ::jank::TokenType;
 static auto& kComparators =
     *new absl::flat_hash_map<TokenType, std::pair<Comparator, bool>>{
         {TokenType::kEq, {Comparator::kEq, false}},
-        {TokenType::kGt, {Comparator::kGt, false}},
+        {TokenType::kGe, {Comparator::kGe, false}},
         {TokenType::kNe, {Comparator::kNe, false}},
-        {TokenType::kLe, {Comparator::kLe, false}},
+        {TokenType::kLt, {Comparator::kLt, false}},
 
-        {TokenType::kLt, {Comparator::kGt, true}},
-        {TokenType::kGe, {Comparator::kLe, true}},
+        {TokenType::kLe, {Comparator::kGe, true}},
+        {TokenType::kGt, {Comparator::kLt, true}},
     };
 
 static auto& kInstrsByMnemonic = *[]() {

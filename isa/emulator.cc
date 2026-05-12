@@ -126,7 +126,7 @@ absl::Status Emulator::Op(
   auto f = std::move(*maybe_f);
 
   bool alu_shr = false;
-  bool alu_neg = false;
+  bool alu_not = false;
   bool alu_carry_in = false;
   bool alu_not_rhs = false;
 
@@ -146,6 +146,17 @@ absl::Status Emulator::Op(
 
   bool mem_bank_set = false;
 
+  // Yikes, but doing this properly would be too annoying right now.
+  if (mnemonic == "subit") {
+    // Needs circuitry right now. Moving cmp and/or changing the subit opcode
+    // could save a few transistors.
+    f.comparator = static_cast<Comparator>(0);
+  }
+  if (mnemonic == "invflag") {
+    // Decodes instruction as comparator, doesn't need circuitry.
+    f.comparator = static_cast<Comparator>(3);
+  }
+
 #undef SET
 #define SET(c, target)    \
   case InstrSemantics::c: \
@@ -159,7 +170,7 @@ absl::Status Emulator::Op(
         break;
         SET(kAluNotRhs, alu_not_rhs);
         SET(kAluShr, alu_shr);
-        SET(kAluNeg, alu_neg);
+        SET(kAluNot, alu_not);
         SET(kAluCarryIn, alu_carry_in);
         SET(kJump, jump);
         SET(kPushPc, push_pc);
@@ -193,7 +204,7 @@ absl::Status Emulator::Op(
     }
   }
 
-  if (alu_neg && alu_shr) {
+  if (alu_not && alu_shr) {
     return absl::InvalidArgumentError("neg & shr unsupported");
   }
 
@@ -201,7 +212,7 @@ absl::Status Emulator::Op(
   std::optional<uint4_t> alu_res = std::nullopt;
 
   std::optional<bool> alu_eq = std::nullopt;
-  std::optional<bool> alu_gt = std::nullopt;
+  std::optional<bool> alu_ge = std::nullopt;
 
   if (ld_gpi) {
     if (!alu_rhs) {
@@ -211,7 +222,7 @@ absl::Status Emulator::Op(
   }
 
   if (flag_get) {
-    alu_rhs = state_.flag;
+    alu_rhs = state_.flag * 15;
   }
 
   if (mem_bank_set) {
@@ -230,22 +241,20 @@ absl::Status Emulator::Op(
     }
 
     wide_out = *alu_lhs + *alu_rhs;
-    alu_res = wide_out;
-
     if (alu_carry_in) {
-      alu_res = *alu_res + 1;
+      ++wide_out;
     }
+    if (alu_not) {
+      wide_out = ~wide_out;
+    }
+    alu_res = wide_out;
 
     if (alu_shr) {
       alu_res = *alu_res >> 1;
     }
 
-    if (alu_neg) {
-      alu_res = ~*alu_res;
-    }
-
     alu_eq = *alu_res == 0;
-    alu_gt = (wide_out & 16) == 16;
+    alu_ge = (wide_out & 16) == 16;
   }
 
   if (pop_reg) {
@@ -329,12 +338,12 @@ absl::Status Emulator::Op(
         }
         state_.flag = *alu_eq == (*f.comparator == Comparator::kEq);
         break;
-      case Comparator::kGt:
-      case Comparator::kLe:
-        if (!alu_gt) {
+      case Comparator::kGe:
+      case Comparator::kLt:
+        if (!alu_ge) {
           return absl::InvalidArgumentError("ALU did not produce a flag.");
         }
-        state_.flag = *alu_gt == (*f.comparator == Comparator::kGt);
+        state_.flag = *alu_ge == (*f.comparator == Comparator::kGe);
         break;
     }
   }

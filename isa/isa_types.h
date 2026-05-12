@@ -34,7 +34,7 @@ enum class InstrSemantics {
   kAluZeroLhs,  // Override the LHS input with 0.
   kAluNotRhs,   // rhs = ~rhs
   kAluShr,      // result >>= 1
-  kAluNeg,      // ~result
+  kAluNot,      // ~result
   kAluCarryIn,
 
   kJump,
@@ -64,9 +64,9 @@ enum class Register {
 
 enum class Comparator {
   kEq,
-  kGt,
+  kLt,
   kNe,
-  kLe,
+  kGe,
 };
 
 struct Field {

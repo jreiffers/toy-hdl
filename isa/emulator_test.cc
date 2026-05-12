@@ -70,16 +70,16 @@ bool Eq(const MachineState& state, int i, int j) {
   return state.flag == (i == j);
 }
 
-bool Le(const MachineState& state, int i, int j) {
-  return state.flag == (i <= j);
+bool Lt(const MachineState& state, int i, int j) {
+  return state.flag == (i < j);
 }
 
 bool Ne(const MachineState& state, int i, int j) {
   return state.flag == (i != j);
 }
 
-bool Gt(const MachineState& state, int i, int j) {
-  return state.flag == (i > j);
+bool Ge(const MachineState& state, int i, int j) {
+  return state.flag == (i >= j);
 }
 
 template <int r>
@@ -176,18 +176,19 @@ TEST(EmulatorTest, WaitFalse) {
   EXPECT_EQ(cycles, 100);
 }
 
+// TODO finalize the comparison operators to support
 TEST(EmulatorTest, Testi) {
   TestAll2("movi %d r0 testi r0 == %d", Eq);
-  TestAll2("movi %d r0 testi r0 > %d", Gt);
+  TestAll2("movi %d r0 testi r0 >= %d", Ge);
   TestAll2("movi %d r0 testi r0 != %d", Ne);
-  TestAll2("movi %d r0 testi r0 <= %d", Le);
+  TestAll2("movi %d r0 testi r0 < %d", Lt);
 }
 
 TEST(EmulatorTest, Test) {
   TestAll2("movi %d r0 movi %d r1 test r0 == r1", Eq);
-  TestAll2("movi %d r0 movi %d r1 test r0 > r1", Gt);
+  TestAll2("movi %d r0 movi %d r1 test r0 >= r1", Ge);
   TestAll2("movi %d r0 movi %d r1 test r0 != r1", Ne);
-  TestAll2("movi %d r0 movi %d r1 test r0 <= r1", Le);
+  TestAll2("movi %d r0 movi %d r1 test r0 < r1", Lt);
 }
 
 TEST(EmulatorTest, Subi) {
@@ -202,7 +203,7 @@ TEST(EmulatorTest, Sub) {
   TestAll2("movi %d r1 movi %d r3 subr r1 r3", Sub<3>);
 }
 
-TEST(EmulatorTest, DISABLED_Subit) {
+TEST(EmulatorTest, Subit) {
   // Comparator not hooked up.
   TestAll2("movi %d r2 subit %d r2", Subt<2>);
 }
@@ -246,9 +247,9 @@ TEST(EmulatorTest, Membank) {
   EXPECT_EQ(final_state.ram[1][5], 5);
 }
 
-TEST(EmulatorTest, DISABLED_Invflag) {
-  // NIY
-  FAIL();
+TEST(EmulatorTest, Invflag) {
+  EXPECT_EQ(RunProgram("test r0 == r1 invflag").flag, false);
+  EXPECT_EQ(RunProgram("test r0 != r1 invflag").flag, true);
 }
 
 TEST(ControlFlowTest, JumpRet) {
@@ -263,11 +264,11 @@ TEST(ControlFlowTest, JumpRet) {
         jump end
  
   sqrt: movi 0 r1
-        testi r0 > 0
+        testi r0 >= 1
         +addi 1 r1
-        testi r0 > 3
+        testi r0 >= 4
         +addi 1 r1
-        testi r0 > 8
+        testi r0 >= 9
         +addi 1 r1
         ret
   end:

@@ -181,7 +181,7 @@ void BuildIsa(IsaBuilder& builder) {
                               cmp_reg_to_imm,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
   C(builder.DefineInstruction("subri", 0'1000'777777_enc,  // b = imm - b
-                              imm_to_reg, {I::kAluNotRhs, I::kAluNeg}));
+                              imm_to_reg, {I::kAluNotRhs, I::kAluNot}));
   C(builder.DefineInstruction("subit",
                               0'1001'777777_enc,  // b = b - imm, test 0
                               imm_to_reg,
@@ -199,7 +199,7 @@ void BuildIsa(IsaBuilder& builder) {
                               reg_or_mem_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn}));
   C(builder.DefineInstruction("subr", 0'11101'77777_enc,  // b = a/[a] - b
-                              reg_or_mem_to_reg, {I::kAluNotRhs, I::kAluNeg}));
+                              reg_or_mem_to_reg, {I::kAluNotRhs, I::kAluNot}));
   C(builder.DefineInstruction(
       "wait",
       0'11110'77777_enc,  // wait for gpi [a] =/!= b
@@ -218,7 +218,7 @@ void BuildIsa(IsaBuilder& builder) {
                               {"pred", "dstnosrc"}, {I::kFlagGet}));
   C(builder.DefineInstruction("not_", 0'11111011'77_enc,  // r = ~r
                               {"pred", "dstnosrc"},
-                              {I::kAluZeroLhs, I::kAluNeg}));
+                              {I::kAluZeroLhs, I::kAluNot}));
   C(builder.DefineInstruction("shr", 0'11111100'77_enc, {"pred", "dstnosrc"},
                               {I::kAluShr, I::kAluZeroLhs}));
   // TODO: flagset is useless, this is just testi reg == 1 (or tbit reg[0], 1)
@@ -233,9 +233,10 @@ void BuildIsa(IsaBuilder& builder) {
                               {"pred"}, {I::kPopPc}));
   // TODO: this will decode to some sort of <= comparison. Figure out the
   // details.
-  C(builder.DefineInstruction("invflag", 0'1111111111_enc,  // flag = !flag
-                              {"pred"},
-                              {I::kFlagGet, I::kFlagSet, I::kAluNeg}));  // TODO
+  C(builder.DefineInstruction(
+      "invflag", 0'1111111111_enc,  // flag = !flag
+      {"pred"},
+      {I::kAluZeroLhs, I::kFlagGet, I::kAluCarryIn, I::kAluNot, I::kFlagSet}));
 #undef C
 
   // Ideas for more useful instructions:
@@ -399,7 +400,6 @@ bool DispatchInstruction(InstructionVisitor<void>& visitor,
 
   if (err || deref_src || cmp || jumpaddr || !registers.empty() || 
       !imms.empty()) {
-    std::cerr << "err: " << (err ? "1" : "0") << ", " << (deref_src ? "1" : "0") << (cmp ? "1" : "0") << (jumpaddr ? "1" : "0") << registers.size() << ", " << imms.size() << "\n";
     return false;
   }
   return true;
