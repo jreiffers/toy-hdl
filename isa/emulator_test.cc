@@ -3,9 +3,9 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/container/flat_hash_map.h"
 #include "isa/assembler.h"
 #include "isa/encdec.h"
 #include "jank/context.h"
@@ -27,7 +27,12 @@ std::vector<uint16_t> Parse(const std::string& source_code) {
                                enc.instructions().end());
 }
 
-MachineState RunProgram(const std::string& source_code, absl::flat_hash_map<int /*time*/, std::pair<uint4_t /*input*/, uint4_t /*val*/>> gpi_changes = {}, int* cycles = 0) {
+MachineState RunProgram(
+    const std::string& source_code,
+    absl::flat_hash_map<int /*time*/,
+                        std::pair<uint4_t /*input*/, uint4_t /*val*/>>
+        gpi_changes = {},
+    int* cycles = 0) {
   constexpr int kMaxSteps = 1000;
 
   auto instrs = Parse(source_code);
@@ -141,7 +146,8 @@ TEST(EmulatorTest, Ldgpi) {
     ldgpi r0 r1  // t = 1
     ldgpi r0 r2  // t = 2
     add r1 r2
-  )", {{0, {7, 1}}, {1, {7, 2}}, {2, {7, 3}}});
+  )",
+                                {{0, {7, 1}}, {1, {7, 2}}, {2, {7, 3}}});
 
   EXPECT_EQ(final_state.registers[2], 5) << absl::StrCat(final_state);
 }
@@ -152,7 +158,8 @@ TEST(EmulatorTest, WaitTrue) {
     movi 3 r0
     movi 5 r1
     wait r0 r1 1   // wait for [3] == 5
-  )", {{99, {2, 5}}, {110, {3, 5}}}, &cycles);
+  )",
+                                {{99, {2, 5}}, {110, {3, 5}}}, &cycles);
 
   EXPECT_EQ(cycles, 111);
 }
@@ -163,7 +170,8 @@ TEST(EmulatorTest, WaitFalse) {
     movi 3 r0
     movi 5 r1
     wait r0 r1 0   // wait for [3] != 5
-  )", {{0, {3, 5}}, {99, {3, 4}}}, &cycles);
+  )",
+                                {{0, {3, 5}}, {99, {3, 4}}}, &cycles);
 
   EXPECT_EQ(cycles, 100);
 }
