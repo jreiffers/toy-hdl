@@ -110,7 +110,7 @@ struct ParsedFields {
   std::optional<AluInput> alu_rhs = std::nullopt;
   std::optional<bool> test_bit_val = std::nullopt;
   std::optional<bool> deref_src = std::nullopt;
-  std::optional<uint6_t> jmp_addr = std::nullopt;
+  std::optional<uint16_t> jmp_addr = std::nullopt;
 };
 
 absl::Status Emulator::Op(
@@ -128,6 +128,7 @@ absl::Status Emulator::Op(
   bool alu_not_rhs = false;
 
   bool jump = false;
+  bool indirect = false;
   bool push_pc = false;
   bool pop_pc = false;
 
@@ -142,6 +143,7 @@ absl::Status Emulator::Op(
   bool flag_set = false;
 
   bool mem_bank_set = false;
+  bool rom_bank_set = false;
 
   // Yikes, but doing this properly would be too annoying right now.
   if (mnemonic == "subitnz" || mnemonic == "andtnz") {
@@ -171,6 +173,7 @@ absl::Status Emulator::Op(
         SET(kAluAnd, alu_and);
         SET(kAluCarryIn, alu_carry_in);
         SET(kJump, jump);
+        SET(kIndirect, indirect);
         SET(kPushPc, push_pc);
         SET(kPopPc, pop_pc);
         SET(kPushReg, push_reg);
@@ -181,6 +184,7 @@ absl::Status Emulator::Op(
         SET(kFlagGet, flag_get);
         SET(kFlagSet, flag_set);
         SET(kMemBankSet, mem_bank_set);
+        SET(kRomBankSet, rom_bank_set);
     }
   }
 
@@ -229,7 +233,16 @@ absl::Status Emulator::Op(
       return absl::InvalidArgumentError(
           "attempted to set RAM bank without an index");
     }
-    state_.bank = *id;
+    state_.membank = *id;
+  }
+
+  if (rom_bank_set) {
+    auto id = f.ReadPort(1, state_);
+    if (!id) {
+      return absl::InvalidArgumentError(
+          "attempted to set ROM bank without an index");
+    }
+    state_.rombank = *id;
   }
 
   if (alu_lhs && alu_rhs) {
@@ -304,11 +317,16 @@ absl::Status Emulator::Op(
   }
 
   if (jump) {
-    if (!f.jmp_addr) {
-      return absl::InvalidArgumentError(
-          "attempted jump without defined target.");
+    if (indirect) {
+      state_.pc = (state_.rombank << 6) | (state_.registers[3] << 2);
+    } else {
+      if (!f.jmp_addr) {
+        return absl::InvalidArgumentError(
+            "attempted jump without defined target.");
+      }
+
+      state_.pc = (state_.rombank << 6) | *f.jmp_addr;
     }
-    state_.pc = *f.jmp_addr;
   }
 
   if (pop_pc) {
@@ -357,7 +375,7 @@ absl::Status Emulator::Op(
 }
 
 absl::Status Emulator::step() {
-  if (state_.pc > rom_.size()) {
+  if (state_.pc >= rom_.size()) {
     return absl::InvalidArgumentError("PC out of bounds.");
   }
   return DecodeInstruction(rom_[state_.pc], *this);

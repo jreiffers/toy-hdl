@@ -36,20 +36,46 @@ bool Parse(Tokenizer& tokenizer, F&& label_def_callback, G&& label_lookup,
   // This is a very silly way to parse this. Initially it didn't really know
   // what instructions exist. Now it does and I didn't feel like rewriting it to
   // be saner.
+  int pc = 0;
   while (tokenizer) {
     auto& context = tokenizer.context();
-
-    bool pred = false;
-    if (tokenizer.peek().type == TokenType::kPlus) {
-      pred = true;
-      tokenizer.get();
-    }
 
     auto unexpected = [&](Token t) {
       context.AddError(absl::StrCat("Unexpected ", to_string(t.type), "."),
                        t.loc);
       return false;
     };
+
+    if (tokenizer.peek().type == TokenType::kParenLeft) {
+      tokenizer.get();
+      int addr;
+      if (!absl::SimpleAtoi(tokenizer.get().text, &addr)) {
+        return unexpected(tokenizer.last_token());
+      }
+      if (tokenizer.get().type != TokenType::kParenRight) {
+        return unexpected(tokenizer.last_token());
+      }
+
+      if (addr < pc) {
+        context.AddError(
+            absl::StrCat("Attempted to pad to pc ", addr, " at pc ", pc, "."),
+            tokenizer.last_token().loc);
+        return false;
+      }
+
+      while (pc < addr) {
+        ++pc;
+        instr_callback("mov", false, false, {Register::kR0, Register::kR0}, {},
+                       std::nullopt, std::nullopt);
+      }
+      continue;
+    }
+
+    bool pred = false;
+    if (tokenizer.peek().type == TokenType::kPlus) {
+      pred = true;
+      tokenizer.get();
+    }
 
     Token mnemonic = tokenizer.get();
     if (mnemonic.type != TokenType::kIdentifier) {
@@ -142,22 +168,19 @@ bool Parse(Tokenizer& tokenizer, F&& label_def_callback, G&& label_lookup,
         imms.push_back(val);
       } else if (t.type == TokenType::kIdentifier && !jump_addr &&
                  instr.HasField("jumpaddr")) {
-        //       if (kInstrsByMnemonic.count(t.text)) break;
-        //       Tokenizer copy = tokenizer;
-        //       copy.get();
-        //      if (copy.peek().type == TokenType::kColon) break;
         uint32_t target;
         if (!label_lookup(t.text, &target)) {
           context.AddError("Unknown label.", t.loc);
           return false;
         }
         tokenizer.get();
-        jump_addr = target;
+        jump_addr = target & 63;
       } else {
         break;
       }
     } while (true);
 
+    ++pc;
     if (!instr_callback(mnemonic.text, pred, deref_src, registers, imms, cmp,
                         jump_addr)) {
       context.AddError("Failed to parse instruction", mnemonic.loc);
@@ -192,7 +215,7 @@ bool ParseAssembly(jank::Context& context, InstructionVisitor<void>& visitor) {
               absl::Span<const Register> registers,
               absl::Span<const uint32_t> imms, std::optional<Comparator> cmp,
               std::optional<uint32_t> jumpaddr) {
-            if (++pc == 64) {
+            if (++pc == 1024) {
               t1.context().AddError("Too many instructions.",
                                     t1.last_token().loc);
               return false;

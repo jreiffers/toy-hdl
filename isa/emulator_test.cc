@@ -259,9 +259,40 @@ TEST(EmulatorTest, Membank) {
   EXPECT_EQ(final_state.ram[1][5], 5);
 }
 
-TEST(EmulatorTest, DISABLED_Rombank) {
-  // NYI
-  GTEST_FAIL();
+TEST(EmulatorTest, Rombank) {
+  int cycles;
+  auto final_state = RunProgram(R"(
+        movi 1 r3
+        rombank r3
+        addi 1 r3
+        jump next
+
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 8
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 16
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 24
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 32
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 40
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 48
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3  // 56
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2
+ halt:  jump halt
+
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+        movi 1 r0 movi 2 r1 movi 3 r2 movi 0 r3
+
+ next:  addi 1 r3
+  )",
+                                {}, &cycles);
+
+  EXPECT_EQ(final_state.registers[3], 3);
+  EXPECT_EQ(cycles, 5);
 }
 
 TEST(EmulatorTest, Invflag) {
@@ -269,14 +300,34 @@ TEST(EmulatorTest, Invflag) {
   EXPECT_EQ(RunProgram("test r0 != r1 invflag").flag, true);
 }
 
-TEST(ControlFlowTest, DISABLED_Jump3) {
-  // NYI
-  GTEST_FAIL();
+TEST(ControlFlowTest, Jump3) {
+  auto final_state = RunProgram(R"(
+               movi 7 r3
+               jump3
+    (27) halt: jump halt
+               movi 8 r3
+    (56) e:
+  )");
+  EXPECT_EQ(final_state.registers[3], 8);
 }
 
-TEST(ControlFlowTest, DISABLED_Call3) {
-  // NYI
-  GTEST_FAIL();
+TEST(ControlFlowTest, Call3) {
+  int cycles;
+  auto final_state = RunProgram(R"(
+            movi 1 r3
+            call3
+            call3
+            call3
+    (4)     movi 10 r3
+            ret
+    (20)    jump e
+    (40)    movi 5 r3
+            ret
+    (56) e:
+  )",
+                                {}, &cycles);
+  EXPECT_EQ(final_state.registers[3], 5);
+  EXPECT_EQ(cycles, 9);
 }
 
 TEST(ControlFlowTest, JumpRet) {
@@ -289,7 +340,7 @@ TEST(ControlFlowTest, JumpRet) {
         testi r3 != 0
       + jump loop
         jump end
- 
+
   sqrt: movi 0 r1
         testi r0 >= 1
         +addi 1 r1

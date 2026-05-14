@@ -18,26 +18,19 @@ struct uint4_t {
   operator uint32_t() const { return val; }
 };
 
-struct uint6_t {
-  uint8_t val;
-
-  uint6_t() : val(0) {}
-  uint6_t(uint32_t v) : val(v & 63) {}
-  operator uint32_t() const { return val; }
-};
-
 struct MachineState {
-  uint4_t Load(uint4_t addr) { return ram[bank][addr]; }
-  void Store(uint4_t addr, uint4_t val) { ram[bank][addr] = val; }
+  uint4_t Load(uint4_t addr) { return ram[membank][addr]; }
+  void Store(uint4_t addr, uint4_t val) { ram[membank][addr] = val; }
 
   std::array<uint4_t, 4> registers;
   std::array<uint4_t, 16> gpi;
   std::array<std::array<uint4_t, 16>, 2> ram;
-  uint6_t pc;
-  uint4_t bak;  // "stack"
-  bool flag;
-  std::deque<uint6_t> call_stack;
-  int bank = 0;
+  uint16_t pc = 0;
+  uint4_t bak = 0;  // "stack"
+  bool flag = false;
+  std::deque<uint16_t> call_stack;
+  int membank = 0;
+  int rombank = 0;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const MachineState& p) {
