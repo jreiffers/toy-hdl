@@ -65,11 +65,9 @@ struct ParsedFields {
           SET(kRegWriteAddr, ret.wa);
           SET(kImmediate, ret.imm);
           SET(kAluCmp, ret.comparator);
-          SET(kTestBitIdx, ret.test_bit_idx);
           SET(kTestBitVal, ret.test_bit_val);
           SET(kDerefSrc, ret.deref_src);
           SET(kJumpAddr, ret.jmp_addr);
-          SET(kMemBankIdx, ret.mem_bank_idx);
 
           SET_ALU(kAluLhs, ret.alu_lhs);
           SET_ALU(kAluRhs, ret.alu_rhs);
@@ -110,11 +108,9 @@ struct ParsedFields {
   std::optional<Comparator> comparator = std::nullopt;
   std::optional<AluInput> alu_lhs = std::nullopt;
   std::optional<AluInput> alu_rhs = std::nullopt;
-  std::optional<int> test_bit_idx = std::nullopt;
   std::optional<bool> test_bit_val = std::nullopt;
   std::optional<bool> deref_src = std::nullopt;
   std::optional<uint6_t> jmp_addr = std::nullopt;
-  std::optional<int> mem_bank_idx = std::nullopt;
 };
 
 absl::Status Emulator::Op(
@@ -127,6 +123,7 @@ absl::Status Emulator::Op(
 
   bool alu_shr = false;
   bool alu_not = false;
+  bool alu_and = false;
   bool alu_carry_in = false;
   bool alu_not_rhs = false;
 
@@ -147,10 +144,10 @@ absl::Status Emulator::Op(
   bool mem_bank_set = false;
 
   // Yikes, but doing this properly would be too annoying right now.
-  if (mnemonic == "subit") {
+  if (mnemonic == "subitnz" || mnemonic == "andtnz") {
     // Needs circuitry right now. Moving cmp and/or changing the subit opcode
     // could save a few transistors.
-    f.comparator = static_cast<Comparator>(0);
+    f.comparator = static_cast<Comparator>(2);
   }
   if (mnemonic == "invflag") {
     // Decodes instruction as comparator, doesn't need circuitry.
@@ -171,6 +168,7 @@ absl::Status Emulator::Op(
         SET(kAluNotRhs, alu_not_rhs);
         SET(kAluShr, alu_shr);
         SET(kAluNot, alu_not);
+        SET(kAluAnd, alu_and);
         SET(kAluCarryIn, alu_carry_in);
         SET(kJump, jump);
         SET(kPushPc, push_pc);
@@ -226,11 +224,12 @@ absl::Status Emulator::Op(
   }
 
   if (mem_bank_set) {
-    if (!f.mem_bank_idx) {
+    auto id = f.ReadPort(1, state_);
+    if (!id) {
       return absl::InvalidArgumentError(
           "attempted to set RAM bank without an index");
     }
-    state_.bank = *f.mem_bank_idx;
+    state_.bank = *id;
   }
 
   if (alu_lhs && alu_rhs) {
@@ -240,7 +239,11 @@ absl::Status Emulator::Op(
       alu_rhs = ~*alu_rhs;
     }
 
-    wide_out = *alu_lhs + *alu_rhs;
+    if (alu_and) {
+      wide_out = *alu_lhs & *alu_rhs;
+    } else {
+      wide_out = *alu_lhs + *alu_rhs;
+    }
     if (alu_carry_in) {
       ++wide_out;
     }

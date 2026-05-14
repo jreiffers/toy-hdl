@@ -140,12 +140,10 @@ void BuildIsa(IsaBuilder& builder) {
   builder.DefineField("dst",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});
   builder.DefineField("dstaddr",   0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
   builder.DefineField("dstnosrc",  0b00000000011, "Register",   {F::kRegReadAddr0, F::kRegWriteAddr, F::kAluRhs});
-  builder.DefineField("bit",       0b00000001100, "uint32_t",   {F::kTestBitIdx});
   builder.DefineField("val",       0b00000010000, "uint32_t",   {F::kTestBitVal});
   builder.DefineField("deref_src", 0b00000010000, "bool",       {F::kDerefSrc});
 
   builder.DefineField("jumpaddr",  0b00000111111, "uint32_t",   {F::kJumpAddr});
-  builder.DefineField("bank",      0b00000000001, "uint32_t",   {F::kMemBankIdx});
   // clang-format on
 
   // rsrc/[rsrc], rdst
@@ -153,7 +151,8 @@ void BuildIsa(IsaBuilder& builder) {
   std::vector<std::string> mem_to_reg{"pred", "src", "dst"};
   std::vector<std::string> reg_to_mem{"pred", "src", "dstaddr"};
   std::vector<std::string> imm_to_reg{"pred", "imm", "dstimm"};
-  std::vector<std::string> reg_to_reg{"pred", "lhs", "rhs"};
+  std::vector<std::string> reg_to_reg{"pred", "src", "dst"};
+  std::vector<std::string> reg_reg{"pred", "lhs", "rhs"};
   std::vector<std::string> cmp_reg_to_reg{"pred", "lhs", "rhs", "cmp"};
   std::vector<std::string> cmp_reg_to_imm{"pred", "imm", "lhsimm", "cmp"};
 
@@ -169,8 +168,10 @@ void BuildIsa(IsaBuilder& builder) {
                               {I::kAluZeroLhs}));
   C(builder.DefineInstruction("add", 0'00100'77777_enc,  // b = b + a/[a]
                               reg_or_mem_to_reg, {}));
-  C(builder.DefineInstruction("tbit", 0'00101'77777_enc,  // flag = (b[n] == v)
-                              testbit, {I::kAluZeroLhs}));
+  C(builder.DefineInstruction("and", 0'00101'07777_enc, reg_to_reg,
+                              {I::kAluAnd}));
+  C(builder.DefineInstruction("andtnz", 0'00101'17777_enc, reg_reg,
+                              {I::kAluAnd, I::kFlagSet}));
   C(builder.DefineInstruction("mov", 0'00110'77777_enc,  // b = a/[a]
                               reg_or_mem_to_reg, {I::kAluZeroLhs}));
   C(builder.DefineInstruction("store", 0'001110'7777_enc,  // [b] = a
@@ -182,13 +183,13 @@ void BuildIsa(IsaBuilder& builder) {
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
   C(builder.DefineInstruction("subri", 0'1000'777777_enc,  // b = imm - b
                               imm_to_reg, {I::kAluNotRhs, I::kAluNot}));
-  C(builder.DefineInstruction("subit",
-                              0'1001'777777_enc,  // b = b - imm, test 0
+  C(builder.DefineInstruction("subitnz",
+                              0'1001'777777_enc,  // b = b - imm, test != 0
                               imm_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("jump", 0'1010'777777_enc,  // jump
+  C(builder.DefineInstruction("jump", 0'1010'777777_enc,  // jump rombank:imm6
                               jump, {I::kJump}));
-  C(builder.DefineInstruction("call", 0'1011'777777_enc,  // call
+  C(builder.DefineInstruction("call", 0'1011'777777_enc,  // call rombank:imm6
                               jump, {I::kJump, I::kPushPc}));
   C(builder.DefineInstruction("test", 0'1100'777777_enc,  // a <cmp> b
                               cmp_reg_to_reg,
@@ -209,40 +210,31 @@ void BuildIsa(IsaBuilder& builder) {
                               {I::kAluZeroLhs, I::kPopPc, I::kPopReg}));
   C(builder.DefineInstruction("pop", 0'11111001'77_enc,  // pop
                               {"pred", "dstnosrc"}, {I::kPopReg}));
-  // TODO: this is dubious, it saves just one instruction vs:
-  //   mov 0 reg
-  //   + inc reg
-  // This pattern is probably rare anyway. Find something more useful for these
-  // bits.
-  C(builder.DefineInstruction("flagget", 0'11111010'77_enc,  // r = flag
-                              {"pred", "dstnosrc"}, {I::kFlagGet}));
-  C(builder.DefineInstruction("not_", 0'11111011'77_enc,  // r = ~r
+  C(builder.DefineInstruction("membank",
+                              0'11111010'77_enc,  // select memory bank r
+                              {"pred", "rhs"}, {I::kMemBankSet}));
+  C(builder.DefineInstruction("not", 0'11111011'77_enc,  // r = ~r
                               {"pred", "dstnosrc"},
                               {I::kAluZeroLhs, I::kAluNot}));
   C(builder.DefineInstruction("shr", 0'11111100'77_enc, {"pred", "dstnosrc"},
                               {I::kAluShr, I::kAluZeroLhs}));
-  // TODO: flagset is useless, this is just testi reg == 1 (or tbit reg[0], 1)
-  C(builder.DefineInstruction("flagset", 0'11111101'77_enc,  // flag = reg[0]
-                              {"pred", "rhs"}, {I::kFlagSet}));
+  C(builder.DefineInstruction("rombank",
+                              0'11111101'77_enc,  // select rom bank r
+                                                  // only affects jumps
+                              {"pred", "rhs"}, {I::kRomBankSet}));
   C(builder.DefineInstruction("push", 0'11111110'77_enc,  // push
                               {"pred", "rhs"}, {I::kAluZeroLhs, I::kPushReg}));
-  C(builder.DefineInstruction("membank",
-                              0'111111110'7_enc,  // select memory bank
-                              {"pred", "bank"}, {I::kMemBankSet}));
+  C(builder.DefineInstruction("jump3", 0'1111111100_enc,  // jump rombank:r3:00
+                              {"pred"}, {I::kJump, I::kIndirect}));
+  C(builder.DefineInstruction("call3", 0'1111111101_enc,  // call rombank:r3:00
+                              {"pred"}, {I::kJump, I::kPushPc, I::kIndirect}));
   C(builder.DefineInstruction("ret", 0'1111111110_enc,  // ret
                               {"pred"}, {I::kPopPc}));
-  // TODO: this will decode to some sort of <= comparison. Figure out the
-  // details.
   C(builder.DefineInstruction(
       "invflag", 0'1111111111_enc,  // flag = !flag
       {"pred"},
       {I::kAluZeroLhs, I::kFlagGet, I::kAluCarryIn, I::kAluNot, I::kFlagSet}));
 #undef C
-
-  // Ideas for more useful instructions:
-  // - something to extend the ROM (e.g. 2 extra bits for long jumps)
-  // - something to read the stack without popping (assuming the stack will be
-  // larger than 1 element)
 }
 
 namespace {
@@ -284,6 +276,12 @@ class InstructionVisitorWithSemantics : public InstructionVisitor<T> {
 #endif
 )";
 
+std::string_view FunctionName(std::string_view mnemonic) {
+  if (mnemonic == "not") return "not_";
+  if (mnemonic == "and") return "and_";
+  return mnemonic;
+}
+
 }  // namespace
 
 std::string GetVisitorSignature(const Instruction& instr, std::string_view T) {
@@ -292,7 +290,7 @@ std::string GetVisitorSignature(const Instruction& instr, std::string_view T) {
     absl::Format(&params.emplace_back(), "%s %s", arg.type, arg.name);
   }
   std::string ret;
-  absl::Format(&ret, "%s %s(%s)", T, instr.mnemonic,
+  absl::Format(&ret, "%s %s(%s)", T, FunctionName(instr.mnemonic),
                absl::StrJoin(params, ", "));
   return ret;
 }
@@ -407,6 +405,7 @@ bool DispatchInstruction(InstructionVisitor<void>& visitor,
 
 }  // namespace isa
 )";
+
 }  // namespace
 
 void PrintAsmDispatch(IsaBuilder& builder) {
@@ -436,8 +435,8 @@ void PrintAsmDispatch(IsaBuilder& builder) {
         return;
       }
     }
-    absl::Format(&lines.emplace_back(), "    visitor.%s(%s);", instr.mnemonic,
-                 absl::StrJoin(args, ", "));
+    absl::Format(&lines.emplace_back(), "    visitor.%s(%s);",
+                 FunctionName(instr.mnemonic), absl::StrJoin(args, ", "));
     lines.push_back("  }");
   }
 
@@ -513,7 +512,7 @@ void PrintEncoderDecoder(IsaBuilder& builder) {
                    field.type, field.mask, __builtin_ctz(field.mask));
     }
     absl::Format(&dec_lines.emplace_back(), R"(    return visitor.%s(%s);)",
-                 instr.mnemonic, absl::StrJoin(args, ", "));
+                 FunctionName(instr.mnemonic), absl::StrJoin(args, ", "));
   }
 
   std::vector<std::string> enc_lines;

@@ -93,8 +93,17 @@ bool Subr(const MachineState& state, int i, int j) {
 }
 
 template <int r>
-bool Subt(const MachineState& state, int i, int j) {
-  return state.registers[r] == ((i - j) & 15) && state.flag == ((i - j) == 0);
+bool And(const MachineState& state, int i, int j) {
+  return state.registers[r] == (i & j);
+}
+
+template <int r>
+bool Subtnz(const MachineState& state, int i, int j) {
+  return state.registers[r] == ((i - j) & 15) && state.flag == ((i - j) != 0);
+}
+
+bool Andtnz(const MachineState& state, int i, int j) {
+  return state.flag == ((i & j) != 0);
 }
 
 TEST(EmulatorTest, Add) {
@@ -109,6 +118,21 @@ TEST(EmulatorTest, Add) {
   EXPECT_EQ(final_state.registers[1], 12);
 }
 
+TEST(EmulatorTest, And) {
+  TestAll2("movi %d r0 movi %d r1 and r0 r1", And<1>);
+  TestAll2("movi %d r0 movi %d r1 andtnz r0 r1", Andtnz);
+
+  auto final_state = RunProgram(R"(
+    movi 5 r0
+    movi 3 r1
+    andtnz r0 r1
+  )");
+
+  EXPECT_EQ(final_state.registers[0], 5);
+  EXPECT_EQ(final_state.registers[1], 3);
+  EXPECT_EQ(final_state.flag, true);
+}
+
 TEST(EmulatorTest, Mov) {
   auto final_state = RunProgram(R"(
     movi 4 r0
@@ -117,16 +141,6 @@ TEST(EmulatorTest, Mov) {
 
   EXPECT_EQ(final_state.registers[0], 4);
   EXPECT_EQ(final_state.registers[3], 4);
-}
-
-TEST(EmulatorTest, DISABLED_Tbit) {
-  // NIY
-  auto final_state = RunProgram(R"(
-    movi 8 r0
-    tbit 3 r0 1
-  )");
-
-  EXPECT_TRUE(final_state.flag);
 }
 
 TEST(EmulatorTest, LoadStore) {
@@ -203,10 +217,7 @@ TEST(EmulatorTest, Sub) {
   TestAll2("movi %d r1 movi %d r3 subr r1 r3", Sub<3>);
 }
 
-TEST(EmulatorTest, Subit) {
-  // Comparator not hooked up.
-  TestAll2("movi %d r2 subit %d r2", Subt<2>);
-}
+TEST(EmulatorTest, Subitnz) { TestAll2("movi %d r2 subitnz %d r2", Subtnz<2>); }
 
 TEST(EmulatorTest, PushPop) {
   EXPECT_EQ(RunProgram("movi 5 r3   push r3   pop r2").registers[2], 5);
@@ -227,7 +238,7 @@ TEST(EmulatorTest, RetPop) {
 }
 
 TEST(EmulatorTest, Not) {
-  EXPECT_EQ(RunProgram("movi 1 r3  not_ r3").registers[3], 14);
+  EXPECT_EQ(RunProgram("movi 1 r3  not r3").registers[3], 14);
 }
 
 TEST(EmulatorTest, Shr) {
@@ -239,7 +250,8 @@ TEST(EmulatorTest, Membank) {
         movi 4 r3
         store r3 r3
         movi 5 r3
-        membank 1
+        movi 1 r2
+        membank r2
         store r3 r3
   )");
 
@@ -247,9 +259,24 @@ TEST(EmulatorTest, Membank) {
   EXPECT_EQ(final_state.ram[1][5], 5);
 }
 
+TEST(EmulatorTest, DISABLED_Rombank) {
+  // NYI
+  GTEST_FAIL();
+}
+
 TEST(EmulatorTest, Invflag) {
   EXPECT_EQ(RunProgram("test r0 == r1 invflag").flag, false);
   EXPECT_EQ(RunProgram("test r0 != r1 invflag").flag, true);
+}
+
+TEST(ControlFlowTest, DISABLED_Jump3) {
+  // NYI
+  GTEST_FAIL();
+}
+
+TEST(ControlFlowTest, DISABLED_Call3) {
+  // NYI
+  GTEST_FAIL();
 }
 
 TEST(ControlFlowTest, JumpRet) {

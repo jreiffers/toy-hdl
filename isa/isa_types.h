@@ -20,14 +20,11 @@ enum class FieldSemantics {
   kAluLhs,
   kAluRhs,
 
-  kTestBitIdx,
   kTestBitVal,
 
   kDerefSrc,
 
   kJumpAddr,
-
-  kMemBankIdx,
 };
 
 enum class InstrSemantics {
@@ -35,9 +32,11 @@ enum class InstrSemantics {
   kAluNotRhs,   // rhs = ~rhs
   kAluShr,      // result >>= 1
   kAluNot,      // ~result
+  kAluAnd,      // and instead of +
   kAluCarryIn,
 
   kJump,
+  kIndirect,  // Indirect jump (via r3)
   kPushPc,
   kPopPc,
 
@@ -53,6 +52,7 @@ enum class InstrSemantics {
   kFlagSet,
 
   kMemBankSet,
+  kRomBankSet,
 };
 
 enum class Register {
