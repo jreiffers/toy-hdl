@@ -208,7 +208,7 @@ bool Gate::Canonicalize() {
       uint64_t new_lut = 0;
       int out_index = 0;
       for (int i = 0; i < lut_size; ++i) {
-        if ((i & erased) != val) {
+        if ((i & erased) == val) {
           new_lut |= ((lookup_data_ >> i) & 1) << out_index;
           ++out_index;
         }
@@ -272,7 +272,6 @@ void Gate::SetInput(int index, GateTerminal new_input) {
 
 uint64_t Gate::EraseInputs(GateTerminal input) {
   assert(inputs_.size() <= 64);
-  uint64_t erased = 0;
 
   int max_index = inputs_.size();
   if (kind_ == GateKind::kLookup) {
@@ -282,9 +281,11 @@ uint64_t Gate::EraseInputs(GateTerminal input) {
   // Clear all uses.
   for (int i = 0; i < num_inputs(); ++i) {
     auto erased = owner_->uses_[this->input(i)].erase({this, i}) == 1;
+    (void)erased;
     assert(erased);
   }
 
+  uint64_t erased = 0;
   for (int i = 0; i < max_index; ++i) {
     if (inputs_[i] == input) {
       inputs_[i] = kNullTerminal;
@@ -301,6 +302,7 @@ uint64_t Gate::EraseInputs(GateTerminal input) {
   // Rebuild uses.
   for (int i = 0; i < num_inputs(); ++i) {
     bool inserted = owner_->uses_[this->input(i)].insert({this, i}).second;
+    (void)inserted;
     assert(inserted);
   }
 

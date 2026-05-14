@@ -3,6 +3,9 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "absl/status/status_matchers.h"
+#include "cpu/eval.h"
+
 using ::testing::ElementsAre;
 using ::testing::Optional;
 
@@ -40,7 +43,7 @@ TEST(GateLibTest, CanonicalizeLookup) {
 
   ASSERT_EQ(lookup.num_inputs(), 2);
   EXPECT_EQ(lookup.input(0), in);
-  EXPECT_EQ(lookup.lookup_data(), 2);
+  EXPECT_EQ(lookup.lookup_data(), 1);
 }
 
 TEST(GateLibTest, CanonicalizeLookup2) {
@@ -52,9 +55,14 @@ TEST(GateLibTest, CanonicalizeLookup2) {
   ASSERT_EQ(lookup.kind(), GateKind::kLookup);
   ASSERT_TRUE(lookup.Canonicalize());
 
+  ABSL_EXPECT_OK(VerifySpec(
+      net, {DynGateReg({lookup.output()})},
+      [](absl::Span<const uint32_t> inputs)
+          -> absl::InlinedVector<uint32_t, 4> { return {!inputs[0]}; }));
+
   ASSERT_EQ(lookup.num_inputs(), 2);
   EXPECT_EQ(lookup.input(0), in);
-  EXPECT_EQ(lookup.lookup_data(), 2);
+  EXPECT_EQ(lookup.lookup_data(), 1);
 }
 
 TEST(GateLibTest, CanonicalizeNand) {

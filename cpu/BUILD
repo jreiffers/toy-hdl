@@ -39,6 +39,7 @@ cc_test(
     name = "gate_lib_test",
     srcs = ["gate_lib_test.cc"],
     deps = [
+        ":eval",
         ":gate_lib",
         "@googletest//:gtest_main",
         "@abseil-cpp//absl/status:status_matchers",

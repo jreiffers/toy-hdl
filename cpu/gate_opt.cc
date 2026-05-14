@@ -110,9 +110,9 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
         if (gate.lookup_data() == 0) {
           gate.ReplaceAllUsesWith(kLowGate);
         } else if (gate.lookup_data() == 1) {
-          gate.ReplaceAllUsesWith(gate.input(0));
-        } else if (gate.lookup_data() == 2) {
           gate.ReplaceAllUsesWith(gate.input(1));
+        } else if (gate.lookup_data() == 2) {
+          gate.ReplaceAllUsesWith(gate.input(0));
         } else {
           assert(gate.lookup_data() == 3);
           gate.ReplaceAllUsesWith(kHighGate);
