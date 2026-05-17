@@ -15,5 +15,6 @@ struct FoldGatesOpts {
 
 bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts);
 bool CseGates(GateNetwork& net);
+bool MergeGates(GateNetwork& net);
 
 #endif

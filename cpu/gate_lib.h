@@ -88,7 +88,10 @@ struct Gate {
   std::vector<std::string> scope_;
 };
 
+std::string_view lut2_name(uint32_t mask);
+std::string_view to_string(GateKind gate_kind);
 std::string to_string(const Gate& gate);
+std::string to_string(GateTerminal t);
 
 template <int bw>
 struct GateReg {
@@ -128,6 +131,7 @@ struct GateNetwork {
   int num_inputs() const { return input_bitwidths_.size(); }
   int num_outputs() const { return output_bitwidths_.size(); }
   int total_input_bits() const { return input_offsets_.back(); }
+  GateTerminal input_bit(int i) const { return {nullptr, i}; }
 
   void DeclareOutput(const DynGateReg& reg, std::string label = "");
   DynGateReg GetOutput(int index);
@@ -240,6 +244,17 @@ struct GateNetwork {
   void PushScope(std::string scope) { scope_.push_back(std::move(scope)); }
   void PopScope() { scope_.pop_back(); }
   const std::vector<std::string>& current_scope() const { return scope_; }
+
+  GateTerminal sink() { return output_gate_.output(); }
+
+  std::vector<GateTerminal> all_inputs() {
+    std::vector<GateTerminal> ret;
+    ret.reserve(total_input_bits());
+    for (int i = 0; i < total_input_bits(); ++i) {
+      ret.push_back(input_bit(i));
+    }
+    return ret;
+  }
 
  private:
   friend struct Gate;

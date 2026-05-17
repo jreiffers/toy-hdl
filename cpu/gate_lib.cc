@@ -1,11 +1,12 @@
 #include "gate_lib.h"
 
+#include <stdexcept>
 #include <iostream>
 
 #include "absl/strings/str_cat.h"
 
-std::string to_string(const Gate& gate) {
-  switch (gate.kind()) {
+std::string_view to_string(GateKind gate_kind) {
+  switch (gate_kind) {
     case GateKind::kDead:
       return "dead";
     case GateKind::kNot:
@@ -18,15 +19,73 @@ std::string to_string(const Gate& gate) {
       return "nand";
     case GateKind::kNor:
       return "nor";
+    case GateKind::kLookup:
+      return "lookup";
+  }
+}
+
+std::string_view lut2_name(uint32_t mask) {
+  switch (mask) {
+    case 0b0000:
+      return "false";
+    case 0b0001:
+      return "nor";
+    case 0b0010:
+      return "a and not(b)";
+    case 0b0011:
+      return "not(b)";
+
+    case 0b0100:
+      return "not(a) and b";
+    case 0b0101:
+      return "not(a)";
+    case 0b0110:
+      return "xor";
+    case 0b0111:
+      return "nand";
+
+    case 0b1000:
+      return "and";
+    case 0b1001:
+      return "eq";
+    case 0b1010:
+      return "a";
+    case 0b1011:
+      return "a or not(b)";
+
+    case 0b1100:
+      return "b";
+    case 0b1101:
+      return "not(a) or b";
+    case 0b1110:
+      return "or";
+    case 0b1111:
+      return "true";
+    default:
+      throw std::logic_error("Invalid function for lut2.");
+  }
+}
+
+std::string to_string(const Gate& gate) {
+  switch (gate.kind()) {
     case GateKind::kLookup: {
-      if (gate.lookup_data() == 0b0110 && gate.num_inputs() == 4) {
-        return "xor";
+      if (gate.num_inputs() == 4) {
+        return std::string(lut2_name(gate.lookup_data()));
       }
       std::stringstream os;
       os << "lookup(" << gate.lookup_data() << ")";
       return os.str();
     }
+    default:
+      return std::string(to_string(gate.kind()));
   }
+}
+
+std::string to_string(GateTerminal t) {
+  if (t.first) {
+    return absl::StrCat(to_string(*t.first), "[", t.second, "]");
+  }
+  return absl::StrCat("input[", t.second, "]");
 }
 
 GateReg<2> MakeHalfAdder(GateNetwork& net, GateTerminal a, GateTerminal b) {

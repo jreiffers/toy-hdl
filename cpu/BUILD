@@ -72,9 +72,21 @@ cc_library(
     srcs = ["gate_opt.cc"],
     hdrs = ["gate_opt.h"],
     deps = [
-        ":gate_lib",
         ":export",
+        ":gate_lib",
+        ":graph",
         "@abseil-cpp//absl/algorithm:container",
+    ],
+)
+
+cc_test(
+    name = "gate_opt_test",
+    srcs = ["gate_opt_test.cc"],
+    deps = [
+        ":eval",
+        ":gate_opt",
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:status_matchers",
     ],
 )
 
@@ -194,6 +206,32 @@ cc_test(
     deps = [
         ":transistor_lib",
         ":eval",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "graph",
+    srcs = ["graph.cc"],
+    hdrs = ["graph.h"],
+    deps = [
+        ":gate_lib",
+        "@abseil-cpp//absl/types:span",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/container:linked_hash_set",
+        "@abseil-cpp//absl/container:linked_hash_map",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "graph_test",
+    srcs = ["graph_test.cc"],
+    deps = [
+        ":graph",
+        ":cpu_modules",
+        "@abseil-cpp//absl/strings",
         "@googletest//:gtest_main",
     ],
 )
