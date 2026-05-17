@@ -102,6 +102,7 @@ cc_library(
     srcs = ["emulator.cc"],
     hdrs = ["emulator.h"],
     deps = [
+        "//cpu:cpu_modules",
         ":visitor",
         ":encdec",
         "@abseil-cpp//absl/algorithm:container",

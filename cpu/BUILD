@@ -51,6 +51,7 @@ cc_library(
     name = "cpu_modules",
     hdrs = ["alu.h", "pc_gen.h", "register_file.h"],
     deps = [":gate_lib"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

@@ -6,6 +6,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "cpu/alu.h"
 #include "isa/encdec.h"
 #include "isa/visitor.h"
 
@@ -246,31 +247,12 @@ absl::Status Emulator::Op(
   }
 
   if (alu_lhs && alu_rhs) {
-    uint32_t wide_out;
+    auto ret = Alu<4>::spec({*alu_lhs, *alu_rhs, alu_carry_in, alu_not_rhs,
+                             alu_and, alu_not, alu_shr});
 
-    if (alu_not_rhs) {
-      alu_rhs = ~*alu_rhs;
-    }
-
-    if (alu_and) {
-      wide_out = *alu_lhs & *alu_rhs;
-    } else {
-      wide_out = *alu_lhs + *alu_rhs;
-    }
-    if (alu_carry_in) {
-      ++wide_out;
-    }
-    if (alu_not) {
-      wide_out = ~wide_out;
-    }
-    alu_res = wide_out;
-
-    if (alu_shr) {
-      alu_res = *alu_res >> 1;
-    }
-
-    alu_eq = *alu_res == 0;
-    alu_ge = (wide_out & 16) == 16;
+    alu_res = ret[0];
+    alu_ge = ret[1];
+    alu_eq = ret[2];
   }
 
   if (pop_reg) {
