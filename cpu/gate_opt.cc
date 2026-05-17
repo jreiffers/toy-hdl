@@ -55,15 +55,27 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
         }
       }
 
-      if (opts.lower_mux && gate.kind() == GateKind::kMux) {
-        ScopeGuard guard(net, gate.scope());
-        auto sel = gate.input(0);
-        auto not_sel = gate.input(1);
-        auto hi = gate.input(2);
-        auto lo = gate.input(3);
-        gate.ReplaceAllUsesWith(
-            net.Nand({net.Nand({sel, hi}), net.Nand({not_sel, lo})}));
-        changed = true;
+      if (gate.kind() == GateKind::kMux) {
+        if (opts.lower_mux) {
+          ScopeGuard guard(net, gate.scope());
+          auto sel = gate.input(0);
+          auto not_sel = gate.input(1);
+          auto hi = gate.input(2);
+          auto lo = gate.input(3);
+          gate.ReplaceAllUsesWith(
+              net.Nand({net.Nand({sel, hi}), net.Nand({not_sel, lo})}));
+          changed = true;
+        } else {
+          if (gate.input(0) == kHighGate) {
+            gate.ReplaceAllUsesWith(gate.input(2));
+            changed = true;
+          } else if (gate.input(0) == kLowGate) {
+            gate.ReplaceAllUsesWith(gate.input(3));
+            changed = true;
+          }
+          // More folding is possible, but this is all that's needed by tests
+          // right now.
+        }
       }
 
       if (gate.num_inputs() == 0) {

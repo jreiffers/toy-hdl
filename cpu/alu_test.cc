@@ -25,7 +25,8 @@ TEST(AluTest, Test) {
   auto b = net.AddInput<2>();
   auto carry_in = net.AddInput<1>();
   auto neg_b = net.AddInput<1>();
-  Alu<2> alu = MakeAlu<2>(net, a, b, carry_in, neg_b);
+  Alu<2> alu =
+      MakeAlu<2>(net, a, b, carry_in, neg_b, kLowGate, kLowGate, kLowGate);
   net.DeclareOutput(alu.res);
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.zero);
@@ -60,7 +61,11 @@ TEST(AluTest, TestSpec) {
   auto b = net.AddInput<2>();
   auto carry_in = net.AddInput<1>();
   auto neg_b = net.AddInput<1>();
-  Alu<2> alu = MakeAlu<2>(net, a, b, carry_in, neg_b);
+  auto compute_and = net.AddInput<1>();
+  auto not_out = net.AddInput<1>();
+  auto shr = net.AddInput<1>();
+  Alu<2> alu =
+      MakeAlu<2>(net, a, b, carry_in, neg_b, compute_and, not_out, shr);
   net.DeclareOutput(alu.res);
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.zero);

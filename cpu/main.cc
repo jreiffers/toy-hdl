@@ -38,7 +38,8 @@ void BuildAlu(GateNetwork& net) {
   auto b = net.AddInput<bw>("b");
   auto carry_in = net.AddInput<1>("cin");
   auto neg_b = net.AddInput<1>("negb");
-  Alu<bw> alu = MakeAlu<bw>(net, a, b, carry_in, neg_b);
+  Alu<bw> alu =
+      MakeAlu<bw>(net, a, b, carry_in, neg_b, kLowGate, kLowGate, kLowGate);
   net.DeclareOutput(alu.res, "result");
   net.DeclareOutput(alu.carry_out, "cout");
   net.DeclareOutput(alu.zero, "zero");
@@ -114,7 +115,9 @@ int main(int argc, char* argv[]) {
     auto netlist = ExportNetlist(transistor_net);
     std::fstream output(absl::GetFlag(FLAGS_output),
                         std::ios::out | std::ios::trunc | std::ios::binary);
-    assert(netlist.SerializeToOstream(&output));
+    bool succ = netlist.SerializeToOstream(&output);
+    (void)succ;
+    assert(succ);
   } else {
     return print_usage();
   }

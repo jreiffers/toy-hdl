@@ -94,6 +94,11 @@ TopoSort::TopoSort(GateNetwork& net, absl::Span<const GateTerminal> sources,
   std::deque<GateTerminal> ready;
   absl::flat_hash_map<Gate*, int> processed_inputs;
 
+  for (auto g : {kHighGate, kLowGate}) {
+    if (!net.GetUsers(g).empty())
+      throw std::logic_error("Run fold-gates first.");
+  }
+
   auto visit = [&](GateTerminal t) {
     order_.push_back(t);
     for (auto [user, _] : net.GetUsers(t)) {

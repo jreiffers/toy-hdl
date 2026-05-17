@@ -7,6 +7,7 @@
 
 #include "absl/strings/str_join.h"
 #include "cpu/alu.h"
+#include "cpu/gate_opt.h"
 #include "cpu/register_file.h"
 
 namespace graph {
@@ -61,9 +62,15 @@ TEST(GraphTest, TestAlu) {
   GateReg<1> a = net.AddInput<1>();
   GateReg<1> b = net.AddInput<1>();
 
-  Alu<1> alu = MakeAlu<1>(net, a, b, cin, neg_b);
+  Alu<1> alu = MakeAlu<1>(net, a, b, cin, neg_b, kLowGate, kLowGate, kLowGate);
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.res);
+  net.DeclareOutput(alu.zero);
+
+  // Toposort/PDT don't support constant inputs.
+  FoldGates(net, {});
+
+  auto carry_out = net.GetOutput(0)[0];
 
   graph::TopoSort toposort(net, net.all_inputs(), {net.sink()});
   graph::PostDominatorTree pdt(net, toposort);
@@ -74,14 +81,14 @@ TEST(GraphTest, TestAlu) {
                                  [&](Gate& g) { return g.input(0) == b[0]; });
   GateTerminal abc_nand = Find(net, "alu/adder/bit0/abc", GateKind::kNand);
 
-  EXPECT_FALSE(pdt.Check(/*dominator=*/alu.carry_out[0], a[0]));
-  EXPECT_FALSE(pdt.Check(/*dominator=*/alu.carry_out[0], b[0]));
+  EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, a[0]));
+  EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, b[0]));
   EXPECT_FALSE(pdt.Check(/*dominator=*/pick_not_b, pick_mux));
-  EXPECT_FALSE(pdt.Check(/*dominator=*/alu.carry_out[0], pick_not_b));
+  EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, pick_not_b));
 
   EXPECT_TRUE(pdt.Check(/*dominator=*/pick_mux, pick_not_b));
   EXPECT_TRUE(pdt.Check(/*dominator=*/pick_mux, neg_b[0]));
-  EXPECT_TRUE(pdt.Check(/*dominator=*/alu.carry_out[0], abc_nand));
+  EXPECT_TRUE(pdt.Check(/*dominator=*/carry_out, abc_nand));
 }
 
 TEST(GraphTest, TestChain) {

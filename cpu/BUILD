@@ -229,6 +229,7 @@ cc_test(
     name = "graph_test",
     srcs = ["graph_test.cc"],
     deps = [
+        ":gate_opt",
         ":graph",
         ":cpu_modules",
         "@abseil-cpp//absl/strings",

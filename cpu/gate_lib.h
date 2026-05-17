@@ -99,8 +99,21 @@ template <int bw>
 struct GateReg {
   std::array<GateTerminal, bw> vals;
 
+  GateReg() {}
+  GateReg(GateTerminal t) : vals{t} {}
+  GateReg(std::initializer_list<GateTerminal> t) {
+    assert(t.size() == bw);
+    std::copy(t.begin(), t.end(), vals.begin());
+  }
+
   GateTerminal operator[](size_t i) const { return vals[i]; }
   GateTerminal& operator[](size_t i) { return vals[i]; }
+
+  template <int _ = bw>
+    requires(bw == 1)
+  operator GateTerminal() const {
+    return vals[0];
+  }
 };
 
 struct DynGateReg {
