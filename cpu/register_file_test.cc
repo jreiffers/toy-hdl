@@ -1,12 +1,14 @@
-#include "register_file.h"
+#include "cpu/register_file.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "absl/status/status_matchers.h"
-#include "eval.h"
+#include "cpu/eval.h"
+#include "cpu/gate_opt.h"
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 using ::testing::Optional;
 
@@ -73,8 +75,14 @@ struct RegisterFileSpec : GateSpec<RegisterFileSpec<bw, register_address>, 6> {
   }
 };
 
+int CountLiveGates(GateNetwork& net) {
+  int result = 0;
+  net.WalkUnordered([&](int, Gate& g) { ++result; });
+  return result;
+}
+
 template <int addr>
-absl::Status VerifyRegister() {
+absl::StatusOr<int> VerifyRegister() {
   GateNetwork net;
   auto reset = net.AddInput<1>("reset");
   auto clk = net.AddInput<1>("clk");
@@ -92,16 +100,19 @@ absl::Status VerifyRegister() {
   net.DeclareOutput(out.read_port_1);
   net.DeclareOutput(out.read_port_2);
 
+  EXPECT_EQ(CountLiveGates(net), 37);
+
   return RegisterFileSpec<2, addr>::Verify(net);
 }
 
-TEST(RegisterTest, TestSpec0) { EXPECT_THAT(VerifyRegister<0>(), IsOk()); }
+// TODO: double check 2560.
+TEST(RegisterTest, TestSpec0) { EXPECT_THAT(VerifyRegister<0>(), IsOkAndHolds(2560)); }
 
-TEST(RegisterTest, TestSpec1) { EXPECT_THAT(VerifyRegister<1>(), IsOk()); }
+TEST(RegisterTest, TestSpec1) { EXPECT_THAT(VerifyRegister<1>(), IsOkAndHolds(2560)); }
 
-TEST(RegisterTest, TestSpec2) { EXPECT_THAT(VerifyRegister<2>(), IsOk()); }
+TEST(RegisterTest, TestSpec2) { EXPECT_THAT(VerifyRegister<2>(), IsOkAndHolds(2560)); }
 
-TEST(RegisterTest, TestSpec3) { EXPECT_THAT(VerifyRegister<3>(), IsOk()); }
+TEST(RegisterTest, TestSpec3) { EXPECT_THAT(VerifyRegister<3>(), IsOkAndHolds(2560)); }
 
 TEST(RegisterTest, Test) {
   GateNetwork net;

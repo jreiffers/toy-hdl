@@ -12,10 +12,11 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "export.h"
-#include "gate_lib.h"
-#include "transistor_lib.h"
+#include "cpu/export.h"
+#include "cpu/gate_lib.h"
+#include "cpu/transistor_lib.h"
 
 enum class PinState {
   kUndefined,  // The pin is floating.
@@ -99,11 +100,11 @@ struct GateSpec {
   // T may have arbitrary internal state. `transition` may change that state
   // in arbitrary ways. `outputs` must be a pure function of the state.
 
-  static absl::Status Verify(GateNetwork& net);
+  static absl::StatusOr<int> Verify(GateNetwork& net);
 };
 
 template <typename T, int num_inputs>
-absl::Status GateSpec<T, num_inputs>::Verify(GateNetwork& net) {
+absl::StatusOr<int> GateSpec<T, num_inputs>::Verify(GateNetwork& net) {
   using GateState = absl::flat_hash_map<GateTerminal, GateTerminalState>;
 
   // The aggregate state is the gate state and the simulation state. The mapping
@@ -267,7 +268,7 @@ absl::Status GateSpec<T, num_inputs>::Verify(GateNetwork& net) {
     if (!result.ok()) return result;
   }
 
-  return absl::OkStatus();
+  return reached_through.size();
 }
 
 #endif
