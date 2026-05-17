@@ -388,3 +388,18 @@ bool MergeGates(GateNetwork& net) {
 
   return changed;
 }
+
+bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts) {
+  bool changed;
+  bool ever_changed = false;
+
+  do {
+    changed = false;
+    changed |= CseGates(net);
+    changed |= FoldGates(net, opts);
+    //changed |= MergeGates(net);
+    ever_changed |= changed;
+  } while (changed);
+
+  return ever_changed;
+}

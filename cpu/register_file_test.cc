@@ -81,7 +81,7 @@ int CountLiveGates(GateNetwork& net) {
   return result;
 }
 
-template <int addr>
+template <int addr, bool opt>
 absl::StatusOr<int> VerifyRegister() {
   GateNetwork net;
   auto reset = net.AddInput<1>("reset");
@@ -100,19 +100,32 @@ absl::StatusOr<int> VerifyRegister() {
   net.DeclareOutput(out.read_port_1);
   net.DeclareOutput(out.read_port_2);
 
-  EXPECT_EQ(CountLiveGates(net), 37);
+  if (opt) {
+    RunGateOptPipeline(net, {.lower_mux = true});
+    EXPECT_EQ(CountLiveGates(net), addr == 0 || addr == 3 ? 28 : 31);
+  } else {
+    EXPECT_EQ(CountLiveGates(net), 37);
+  }
 
   return RegisterFileSpec<2, addr>::Verify(net);
 }
 
 // TODO: double check 2560.
-TEST(RegisterTest, TestSpec0) { EXPECT_THAT(VerifyRegister<0>(), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec0) { EXPECT_THAT((VerifyRegister<0, false>()), IsOkAndHolds(2560)); }
 
-TEST(RegisterTest, TestSpec1) { EXPECT_THAT(VerifyRegister<1>(), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec1) { EXPECT_THAT((VerifyRegister<1, false>()), IsOkAndHolds(2560)); }
 
-TEST(RegisterTest, TestSpec2) { EXPECT_THAT(VerifyRegister<2>(), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec2) { EXPECT_THAT((VerifyRegister<2, false>()), IsOkAndHolds(2560)); }
 
-TEST(RegisterTest, TestSpec3) { EXPECT_THAT(VerifyRegister<3>(), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec3) { EXPECT_THAT((VerifyRegister<3, false>()), IsOkAndHolds(2560)); }
+
+TEST(RegisterTest, TestSpecOpt0) { EXPECT_THAT((VerifyRegister<0, true>()), IsOkAndHolds(2560)); }
+
+TEST(RegisterTest, TestSpecOpt1) { EXPECT_THAT((VerifyRegister<1, true>()), IsOkAndHolds(2560)); }
+
+TEST(RegisterTest, TestSpecOpt2) { EXPECT_THAT((VerifyRegister<2, true>()), IsOkAndHolds(2560)); }
+
+TEST(RegisterTest, TestSpecOpt3) { EXPECT_THAT((VerifyRegister<3, true>()), IsOkAndHolds(2560)); }
 
 TEST(RegisterTest, Test) {
   GateNetwork net;

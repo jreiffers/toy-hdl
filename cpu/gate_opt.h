@@ -17,4 +17,6 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts);
 bool CseGates(GateNetwork& net);
 bool MergeGates(GateNetwork& net);
 
+bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts);
+
 #endif
