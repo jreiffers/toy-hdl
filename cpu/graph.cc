@@ -2,12 +2,90 @@
 
 #include <deque>
 #include <ranges>
+#include <stack>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 
 namespace graph {
+
+Sccs::Sccs(GateNetwork& net) {
+  struct NodeInfo {
+    int index = -1;
+    int lowlink = -1;
+    bool on_stack = false;
+  };
+
+  absl::node_hash_map<GateTerminal, NodeInfo> nodes;
+
+  int index = 0;
+
+  std::stack<GateTerminal> stack;
+  std::function<void(GateTerminal t, NodeInfo & info)> visit;
+  visit = [&](GateTerminal t, NodeInfo& info) {
+    info.lowlink = info.index = index++;
+    stack.push(t);
+    info.on_stack = true;
+
+    for (auto [user, _] : net.GetUsers(t)) {
+      auto out = user->output();
+      assert(out != t);
+      auto& user_info = nodes[out];
+      if (user_info.index == -1) {
+        visit(out, user_info);
+        info.lowlink = std::min(info.lowlink, user_info.lowlink);
+      } else if (user_info.on_stack) {
+        info.lowlink = std::min(info.lowlink, user_info.index);
+      }
+    }
+
+    if (info.lowlink == info.index) {
+      GateTerminal w;
+      auto& scc = sccs_.emplace_back();
+      do {
+        w = stack.top();
+        auto& w_info = nodes[w];
+        w_info.on_stack = false;
+        scc.members.insert(w);
+        stack.pop();
+      } while (w != t);
+
+      if (scc.members.size() == 1) {
+        sccs_.pop_back();
+      } else {
+        for (auto node : scc.members) {
+          auto& gate = *node.first;
+
+          bool all_operands_inside = true;
+          bool all_users_inside = true;
+
+          for (int i = 0; all_operands_inside && i < gate.num_inputs(); ++i) {
+            all_operands_inside &= scc.members.count(gate.input(i));
+          }
+
+          for (auto [user, _] : net.GetUsers(gate.output())) {
+            if (!(all_users_inside &= scc.members.count(user->output()))) break;
+          }
+
+          if (!all_operands_inside) scc.sinks.insert(node);
+          if (!all_users_inside) scc.sources.insert(node);
+        }
+      }
+    }
+  };
+
+  for (auto input : net.all_inputs()) {
+    visit(input, nodes[input]);
+  }
+
+  net.WalkUnordered([&](int, Gate& gate) {
+    auto& info = nodes[gate.output()];
+    if (info.index == -1) {
+      visit(gate.output(), info);
+    }
+  });
+}
 
 TopoSort::TopoSort(GateNetwork& net, absl::Span<const GateTerminal> sources,
                    absl::Span<const GateTerminal> sinks)

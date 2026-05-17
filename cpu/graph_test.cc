@@ -7,6 +7,7 @@
 
 #include "absl/strings/str_join.h"
 #include "cpu/alu.h"
+#include "cpu/register_file.h"
 
 namespace graph {
 namespace {
@@ -26,6 +27,30 @@ GateTerminal Find(
     ADD_FAILURE() << "No gate found for " << scope << ", type "
                   << to_string(kind) << ".";
   return *res;
+}
+
+TEST(GraphTest, TestRegisterSccs) {
+  GateNetwork net;
+  auto reset = net.AddInput<1>();
+  auto clk = net.AddInput<1>();
+  auto addr = net.AddInput<2>();
+  auto rda1 = net.AddInput<2>();
+  auto rda2 = net.AddInput<2>();
+  auto wa = net.AddInput<2>();
+  auto data = net.AddInput<4>();
+
+  auto out = MakeRegister(net, reset, clk, addr, rda1, rda2, wa, data);
+  net.DeclareOutput(out.read_port_1);
+  net.DeclareOutput(out.read_port_2);
+
+  Sccs sccs(net);
+  ASSERT_EQ(sccs.sccs().size(), 4);
+
+  for (const auto& scc : sccs.sccs()) {
+    EXPECT_EQ(scc.members.size(), 7);  // flip flop + mux
+    EXPECT_EQ(scc.sinks.size(), 5);    // mux, 3/4 stage0, 1/2 stage1.
+    EXPECT_EQ(scc.sources.size(), 1);  // 1/2 stage1
+  }
 }
 
 TEST(GraphTest, TestAlu) {

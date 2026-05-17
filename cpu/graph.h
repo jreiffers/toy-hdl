@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/linked_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
@@ -10,7 +11,24 @@
 
 namespace graph {
 
-// TODO tarjan for SCCs
+// Computes non-degenerate SCCs.
+class Sccs {
+ public:
+  explicit Sccs(GateNetwork& net);
+
+  struct Scc {
+    absl::flat_hash_set<GateTerminal> members;
+    // Nodes in this SCC that use a value outside.
+    absl::flat_hash_set<GateTerminal> sinks;
+    // Nodes in this SCC that are used outside.
+    absl::flat_hash_set<GateTerminal> sources;
+  };
+
+  absl::Span<const Scc> sccs() const { return sccs_; }
+
+ private:
+  std::vector<Scc> sccs_;
+};
 
 class TopoSort {
  public:
