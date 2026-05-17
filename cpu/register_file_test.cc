@@ -111,21 +111,37 @@ absl::StatusOr<int> VerifyRegister() {
 }
 
 // TODO: double check 2560.
-TEST(RegisterTest, TestSpec0) { EXPECT_THAT((VerifyRegister<0, false>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec0) {
+  EXPECT_THAT((VerifyRegister<0, false>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpec1) { EXPECT_THAT((VerifyRegister<1, false>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec1) {
+  EXPECT_THAT((VerifyRegister<1, false>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpec2) { EXPECT_THAT((VerifyRegister<2, false>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec2) {
+  EXPECT_THAT((VerifyRegister<2, false>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpec3) { EXPECT_THAT((VerifyRegister<3, false>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpec3) {
+  EXPECT_THAT((VerifyRegister<3, false>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpecOpt0) { EXPECT_THAT((VerifyRegister<0, true>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpecOpt0) {
+  EXPECT_THAT((VerifyRegister<0, true>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpecOpt1) { EXPECT_THAT((VerifyRegister<1, true>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpecOpt1) {
+  EXPECT_THAT((VerifyRegister<1, true>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpecOpt2) { EXPECT_THAT((VerifyRegister<2, true>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpecOpt2) {
+  EXPECT_THAT((VerifyRegister<2, true>()), IsOkAndHolds(2560));
+}
 
-TEST(RegisterTest, TestSpecOpt3) { EXPECT_THAT((VerifyRegister<3, true>()), IsOkAndHolds(2560)); }
+TEST(RegisterTest, TestSpecOpt3) {
+  EXPECT_THAT((VerifyRegister<3, true>()), IsOkAndHolds(2560));
+}
 
 TEST(RegisterTest, Test) {
   GateNetwork net;
@@ -141,6 +157,11 @@ TEST(RegisterTest, Test) {
   auto data = net.AddInput<4>();
 
   auto out = MakeRegister(net, reset, clk, register_addr, rda1, rda2, wa, data);
+  net.DeclareOutput(out.read_port_1);
+  net.DeclareOutput(out.read_port_2);
+
+  RunGateOptPipeline(net, {.lower_mux = true});
+
   absl::flat_hash_map<GateTerminal, GateTerminalState> state;
 
   auto tick = [&](bool reset, bool clock, uint32_t ra1, uint32_t ra2,

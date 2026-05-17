@@ -1,7 +1,7 @@
 #include "gate_lib.h"
 
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 
 #include "absl/strings/str_cat.h"
 
@@ -383,4 +383,21 @@ bool Gate::operator<(const Gate& rhs) const {
   if (num_outputs_ != rhs.num_outputs_) return num_outputs_ < rhs.num_outputs_;
   if (lookup_data_ != rhs.lookup_data_) return lookup_data_ < rhs.lookup_data_;
   return inputs_ < rhs.inputs_;
+}
+
+int Gate::GetCost() const {
+  switch (kind_) {
+    case GateKind::kNot:
+    case GateKind::kNand:
+    case GateKind::kNor:
+      return 2 * num_inputs();
+    case GateKind::kMux:
+      return 4;
+    case GateKind::kLookup:
+      return (1 << (num_inputs() / 2)) * (num_inputs() / 2);
+    case GateKind::kTriStateBuffer:
+      return 2;
+    case GateKind::kDead:
+      return 0;
+  }
 }

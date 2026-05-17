@@ -13,6 +13,7 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/container/linked_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/strings/str_join.h"
 #include "cpu/graph.h"
 
 namespace {
@@ -182,7 +183,7 @@ uint32_t ComposeLut2(uint32_t f_lut, uint32_t in_0_lut, uint32_t in_1_lut) {
 
     uint32_t out_val = (f_lut >> (val_0 + val_1 * 2)) & 1;
     if (out_val) {
-      ret |= ab;
+      ret |= 1u << ab;
     }
   }
   return ret;
@@ -240,6 +241,7 @@ struct ScoredCut {
   absl::InlinedVector<GateTerminal, 2> inputs;
   int score;
   uint32_t function;
+  absl::flat_hash_set<Gate*> removable_gates;
 };
 
 template <typename V>
@@ -268,10 +270,6 @@ bool WalkCut(const GateNetwork& net, GateTerminal out, Cut cut, V&& visit) {
 std::optional<ScoredCut> ScoreCut(const GateNetwork& net,
                                   const graph::PostDominatorTree& pdt,
                                   GateTerminal out, Cut in) {
-  if (!pdt.CheckAll(out, in)) {
-    return std::nullopt;
-  }
-
   absl::flat_hash_map<GateTerminal, uint32_t> funs;
 
   funs[in[0]] = 0b1010;
@@ -279,17 +277,25 @@ std::optional<ScoredCut> ScoreCut(const GateNetwork& net,
     funs[in[1]] = 0b1100;
   }
 
-  int score = 0;
+  absl::flat_hash_set<Gate*> removable;
   bool walk_success = WalkCut(net, out, in, [&](Gate& gate) {
+    // Gate created in this pass iteration - stop here.
+    if (!pdt.IsKnown(gate.output())) {
+      return false;
+    }
+
     absl::InlinedVector<uint32_t, 4> in_funs;
     for (int i = 0; i < gate.num_inputs(); ++i) {
       in_funs.push_back(funs.at(gate.input(i)));
+    }
+
+    if (pdt.Check(out, gate.output())) {
+      removable.insert(&gate);
     }
     switch (gate.kind()) {
       case GateKind::kMux: {
         funs[gate.output()] =
             (in_funs[0] & in_funs[2]) | (in_funs[1] & in_funs[3]);
-        score += 4;
         return true;
       }
       case GateKind::kNot:
@@ -297,14 +303,12 @@ std::optional<ScoredCut> ScoreCut(const GateNetwork& net,
         uint32_t o = 0;
         for (uint32_t f : in_funs) o |= f;
         funs[gate.output()] = ~o;
-        score += 2 * gate.num_inputs();
         return true;
       }
       case GateKind::kNand: {
         uint32_t o = 0xFFFFFFFF;
         for (uint32_t f : in_funs) o &= f;
         funs[gate.output()] = ~o;
-        score += 2 * gate.num_inputs();
         return true;
       }
       case GateKind::kLookup: {
@@ -312,19 +316,34 @@ std::optional<ScoredCut> ScoreCut(const GateNetwork& net,
         assert(gate.num_inputs() == 4);
         funs[gate.output()] =
             ComposeLut2(gate.lookup_data(), in_funs[0], in_funs[1]);
-        score += 8;
         return true;
       }
       case GateKind::kDead:
       case GateKind::kTriStateBuffer:
         return false;
     }
-
   });
 
-  if (!walk_success || score == 0) return std::nullopt;
+  if (!walk_success || removable.empty()) return std::nullopt;
 
-  return ScoredCut{out, in, score, funs[out] & 0xF};
+  int score = 0;
+  for (auto* gate : removable) {
+    score += gate->GetCost();
+  }
+
+  return ScoredCut{out, in, score, funs[out] & 0xF, std::move(removable)};
+}
+
+std::optional<GateTerminal> FindNot(GateNetwork& net, GateTerminal t) {
+  if (t.first && t.first->kind() == GateKind::kNot) {
+    return t.first->input(0);
+  }
+  for (auto [user, _] : net.GetUsers(t)) {
+    if (user->kind() == GateKind::kNot) {
+      return user->output();
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace
@@ -334,10 +353,19 @@ bool MergeGates(GateNetwork& net) {
   // lookup gates.
   // Currently, this only handles 2-input LUTs.
 
-  // TODO: handle flip-flops
+  std::vector<GateTerminal> sources = net.all_inputs();
+  std::vector<GateTerminal> sinks{net.sink()};
+  graph::Sccs sccs(net);
+  for (const auto& scc : sccs.sccs()) {
+    for (auto source : scc.sources) {
+      sources.push_back(source);
+    }
+    for (auto sink : scc.sinks) {
+      sinks.push_back(sink);
+    }
+  }
 
-  auto sources = net.all_inputs();
-  graph::TopoSort sort(net, sources, {net.sink()});
+  graph::TopoSort sort(net, sources, sinks);
   graph::PostDominatorTree pdt(net, sort);
 
   const auto& candidates = GetCutCandidates(sort);
@@ -363,23 +391,34 @@ bool MergeGates(GateNetwork& net) {
     //
     // TODO: handle better cuts first. The final result should be the same, but
     // that might need fewer iterations.
-    if (best->score <= 12) continue;
+    if (best->score <= 8) continue;
 
-    absl::InlinedVector<Gate*, 6> to_erase;
-    WalkCut(net, out, best->inputs, [&](Gate& g) {
-      to_erase.push_back(&g);
-      return true;
-    });
+    int replacement_cost = 8;
+    absl::InlinedVector<std::optional<GateTerminal>, 2> existing_nots;
+    for (GateTerminal in : best->inputs) {
+      if (auto existing_not = FindNot(net, in)) {
+        if (best->removable_gates.erase(existing_not->first)) {
+          best->score -= 2;
+        }
+        existing_nots.push_back(existing_not);
+      } else {
+        replacement_cost += 2;
+      }
+    }
+
+    if (best->score <= replacement_cost) continue;
 
     auto ins = best->inputs;
     for (int i = 0, e = ins.size(); i < e; ++i) {
-      ins.push_back(net.Not(ins[i]));
+      ins.push_back(existing_nots[i] ? *existing_nots[i] : net.Not(ins[i]));
     }
+
+    // TODO: set the scope
     auto& repl = net.AddGate(GateKind::kLookup, ins);
     repl.set_lookup_data(best->function);
     out.first->ReplaceAllUsesWith(repl.output());
 
-    for (Gate* g : to_erase) {
+    for (Gate* g : best->removable_gates) {
       g->Erase();
     }
 
@@ -397,7 +436,7 @@ bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts) {
     changed = false;
     changed |= CseGates(net);
     changed |= FoldGates(net, opts);
-    //changed |= MergeGates(net);
+    changed |= MergeGates(net);
     ever_changed |= changed;
   } while (changed);
 

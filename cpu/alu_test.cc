@@ -13,6 +13,12 @@
 using ::testing::ElementsAre;
 using ::testing::Optional;
 
+int CountLiveGates(GateNetwork& net) {
+  int result = 0;
+  net.WalkUnordered([&](int, Gate& g) { ++result; });
+  return result;
+}
+
 TEST(AluTest, Test) {
   GateNetwork net;
   auto a = net.AddInput<2>();
@@ -24,7 +30,8 @@ TEST(AluTest, Test) {
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.zero);
 
-  FoldGates(net, FoldGatesOpts());
+  RunGateOptPipeline(net, FoldGatesOpts{.lower_mux = true});
+  EXPECT_EQ(CountLiveGates(net), 24);
 
   Network transistor_net = Lower(net);
 
@@ -57,6 +64,8 @@ TEST(AluTest, TestSpec) {
   net.DeclareOutput(alu.res);
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.zero);
+
+  RunGateOptPipeline(net, FoldGatesOpts{.lower_mux = true});
 
   ABSL_EXPECT_OK(
       VerifySpec(net, {net.GetOutput(0), net.GetOutput(1), net.GetOutput(2)},

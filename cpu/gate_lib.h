@@ -76,6 +76,8 @@ struct Gate {
   const std::string& output_tag() const { return output_tag_; }
   void set_output_tag(std::string tag) { output_tag_ = std::move(tag); }
 
+  int GetCost() const;
+
  private:
   friend struct GateNetwork;
 

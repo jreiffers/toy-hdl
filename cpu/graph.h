@@ -84,6 +84,8 @@ class PostDominatorTree {
     return true;
   }
 
+  bool IsKnown(GateTerminal t) const { return pdt_.count(t); }
+
   void dump() const;
 
  private:
