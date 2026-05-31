@@ -37,9 +37,14 @@ void BuildAlu(GateNetwork& net) {
   auto a = net.AddInput<bw>("a");
   auto b = net.AddInput<bw>("b");
   auto carry_in = net.AddInput<1>("cin");
-  auto neg_b = net.AddInput<1>("negb");
-  Alu<bw> alu =
-      MakeAlu<bw>(net, a, b, carry_in, neg_b, kLowGate, kLowGate, kLowGate);
+  auto not_b = net.AddInput<1>("not_b");
+  auto compute_and = net.AddInput<1>("and");
+  auto not_out = net.AddInput<1>("not_out");
+  auto shr = net.AddInput<1>("shr");
+  auto zero_lhs = net.AddInput<1>("zero_lhs");
+
+  Alu<bw> alu = MakeAlu<bw>(net, a, b, carry_in, not_b, compute_and, not_out,
+                            shr, zero_lhs);
   net.DeclareOutput(alu.res, "result");
   net.DeclareOutput(alu.carry_out, "cout");
   net.DeclareOutput(alu.zero, "zero");
