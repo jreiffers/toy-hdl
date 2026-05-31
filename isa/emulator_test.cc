@@ -38,11 +38,11 @@ MachineState RunProgram(
   auto instrs = Parse(source_code);
   Emulator emulator(instrs);
   int time = 0;
-  while (time < kMaxSteps && emulator.state().pc < instrs.size()) {
+  while (time < kMaxSteps && emulator.state().pc() < instrs.size()) {
     auto change = gpi_changes.find(time);
     if (change != gpi_changes.end()) {
       auto [addr, val] = change->second;
-      emulator.state().gpi[addr] = val;
+      emulator.state().set_gpi(addr, val);
     }
     ABSL_EXPECT_OK(emulator.step());
     ++time;
@@ -60,50 +60,42 @@ template <typename Fn>
 void TestAll2(const absl::FormatSpec<int, int>& pattern, Fn&& verifier) {
   for (int i = 0; i < 16; ++i) {
     for (int j = 0; j < 16; ++j) {
-      EXPECT_TRUE(verifier(RunProgram(StrFormat(pattern, i, j)), i, j))
-          << StrFormat(pattern, i, j);
+      auto state = RunProgram(StrFormat(pattern, i, j));
+      EXPECT_TRUE(verifier(state, i, j)) << StrFormat(pattern, i, j);
     }
   }
 }
 
-bool Eq(const MachineState& state, int i, int j) {
-  return state.flag == (i == j);
-}
+bool Eq(MachineState& state, int i, int j) { return state.flag() == (i == j); }
 
-bool Lt(const MachineState& state, int i, int j) {
-  return state.flag == (i < j);
-}
+bool Lt(MachineState& state, int i, int j) { return state.flag() == (i < j); }
 
-bool Ne(const MachineState& state, int i, int j) {
-  return state.flag == (i != j);
-}
+bool Ne(MachineState& state, int i, int j) { return state.flag() == (i != j); }
 
-bool Ge(const MachineState& state, int i, int j) {
-  return state.flag == (i >= j);
+bool Ge(MachineState& state, int i, int j) { return state.flag() == (i >= j); }
+
+template <int r>
+bool Sub(MachineState& state, int i, int j) {
+  return state.read(r) == ((i - j) & 15);
 }
 
 template <int r>
-bool Sub(const MachineState& state, int i, int j) {
-  return state.registers[r] == ((i - j) & 15);
+bool Subr(MachineState& state, int i, int j) {
+  return state.read(r) == ((j - i) & 15);
 }
 
 template <int r>
-bool Subr(const MachineState& state, int i, int j) {
-  return state.registers[r] == ((j - i) & 15);
+bool And(MachineState& state, int i, int j) {
+  return state.read(r) == (i & j);
 }
 
 template <int r>
-bool And(const MachineState& state, int i, int j) {
-  return state.registers[r] == (i & j);
+bool Subtnz(MachineState& state, int i, int j) {
+  return state.read(r) == ((i - j) & 15) && state.flag() == ((i - j) != 0);
 }
 
-template <int r>
-bool Subtnz(const MachineState& state, int i, int j) {
-  return state.registers[r] == ((i - j) & 15) && state.flag == ((i - j) != 0);
-}
-
-bool Andtnz(const MachineState& state, int i, int j) {
-  return state.flag == ((i & j) != 0);
+bool Andtnz(MachineState& state, int i, int j) {
+  return state.flag() == ((i & j) != 0);
 }
 
 TEST(EmulatorTest, Add) {
@@ -114,8 +106,8 @@ TEST(EmulatorTest, Add) {
     add r1 r1
   )");
 
-  EXPECT_EQ(final_state.registers[0], 6);
-  EXPECT_EQ(final_state.registers[1], 12);
+  EXPECT_EQ(final_state.read(0), 6);
+  EXPECT_EQ(final_state.read(1), 12);
 }
 
 TEST(EmulatorTest, And) {
@@ -128,9 +120,9 @@ TEST(EmulatorTest, And) {
     andtnz r0 r1
   )");
 
-  EXPECT_EQ(final_state.registers[0], 5);
-  EXPECT_EQ(final_state.registers[1], 3);
-  EXPECT_EQ(final_state.flag, true);
+  EXPECT_EQ(final_state.read(0), 5);
+  EXPECT_EQ(final_state.read(1), 3);
+  EXPECT_EQ(final_state.flag(), true);
 }
 
 TEST(EmulatorTest, Mov) {
@@ -139,8 +131,8 @@ TEST(EmulatorTest, Mov) {
     mov r0 r3
   )");
 
-  EXPECT_EQ(final_state.registers[0], 4);
-  EXPECT_EQ(final_state.registers[3], 4);
+  EXPECT_EQ(final_state.read(0), 4);
+  EXPECT_EQ(final_state.read(3), 4);
 }
 
 TEST(EmulatorTest, LoadStore) {
@@ -151,7 +143,7 @@ TEST(EmulatorTest, LoadStore) {
     mov [r0] r2
   )");
 
-  EXPECT_EQ(final_state.registers[2], 7) << absl::StrCat(final_state);
+  EXPECT_EQ(final_state.read(2), 7) << absl::StrCat(final_state);
 }
 
 TEST(EmulatorTest, Ldgpi) {
@@ -163,7 +155,7 @@ TEST(EmulatorTest, Ldgpi) {
   )",
                                 {{0, {7, 1}}, {1, {7, 2}}, {2, {7, 3}}});
 
-  EXPECT_EQ(final_state.registers[2], 5) << absl::StrCat(final_state);
+  EXPECT_EQ(final_state.read(2), 5) << absl::StrCat(final_state);
 }
 
 TEST(EmulatorTest, WaitTrue) {
@@ -220,7 +212,7 @@ TEST(EmulatorTest, Sub) {
 TEST(EmulatorTest, Subitnz) { TestAll2("movi %d r2 subitnz %d r2", Subtnz<2>); }
 
 TEST(EmulatorTest, PushPop) {
-  EXPECT_EQ(RunProgram("movi 5 r3   push r3   pop r2").registers[2], 5);
+  EXPECT_EQ(RunProgram("movi 5 r3   push r3   pop r2").read(2), 5);
 }
 
 TEST(EmulatorTest, RetPop) {
@@ -233,16 +225,16 @@ TEST(EmulatorTest, RetPop) {
          movi 0 r2
   end:
   )")
-                .registers[2],
+                .read(2),
             3);
 }
 
 TEST(EmulatorTest, Not) {
-  EXPECT_EQ(RunProgram("movi 1 r3  not r3").registers[3], 14);
+  EXPECT_EQ(RunProgram("movi 1 r3  not r3").read(3), 14);
 }
 
 TEST(EmulatorTest, Shr) {
-  EXPECT_EQ(RunProgram("movi 15 r3  shr r3").registers[3], 7);
+  EXPECT_EQ(RunProgram("movi 15 r3  shr r3").read(3), 7);
 }
 
 TEST(EmulatorTest, Membank) {
@@ -255,8 +247,8 @@ TEST(EmulatorTest, Membank) {
         store r3 r3
   )");
 
-  EXPECT_EQ(final_state.ram[0][4], 4);
-  EXPECT_EQ(final_state.ram[1][5], 5);
+  EXPECT_EQ(final_state.load(0, 4), 4);
+  EXPECT_EQ(final_state.load(1, 5), 5);
 }
 
 TEST(EmulatorTest, Rombank) {
@@ -291,13 +283,13 @@ TEST(EmulatorTest, Rombank) {
   )",
                                 {}, &cycles);
 
-  EXPECT_EQ(final_state.registers[3], 3);
+  EXPECT_EQ(final_state.read(3), 3);
   EXPECT_EQ(cycles, 5);
 }
 
 TEST(EmulatorTest, Invflag) {
-  EXPECT_EQ(RunProgram("test r0 == r1 invflag").flag, false);
-  EXPECT_EQ(RunProgram("test r0 != r1 invflag").flag, true);
+  EXPECT_EQ(RunProgram("test r0 == r1 invflag").flag(), false);
+  EXPECT_EQ(RunProgram("test r0 != r1 invflag").flag(), true);
 }
 
 TEST(ControlFlowTest, Jump3) {
@@ -308,7 +300,7 @@ TEST(ControlFlowTest, Jump3) {
                movi 8 r3
     (56) e:
   )");
-  EXPECT_EQ(final_state.registers[3], 8);
+  EXPECT_EQ(final_state.read(3), 8);
 }
 
 TEST(ControlFlowTest, Call3) {
@@ -326,7 +318,7 @@ TEST(ControlFlowTest, Call3) {
     (56) e:
   )",
                                 {}, &cycles);
-  EXPECT_EQ(final_state.registers[3], 5);
+  EXPECT_EQ(final_state.read(3), 5);
   EXPECT_EQ(cycles, 9);
 }
 
@@ -352,8 +344,10 @@ TEST(ControlFlowTest, JumpRet) {
   end:
 
   )");
-  EXPECT_THAT(final_state.ram[0],
-              ElementsAre(0, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3));
+
+  for (int i = 0; i <= 15; ++i) {
+    EXPECT_EQ(final_state.load(0, i), int(sqrt(i))) << i;
+  }
 }
 
 TEST(ControlFlowTest, JumpRet2) {
@@ -378,7 +372,7 @@ TEST(ControlFlowTest, JumpRet2) {
         ret
   end:
   )");
-  EXPECT_EQ(final_state.registers[2], 12);
+  EXPECT_EQ(final_state.read(2), 12);
 }
 
 TEST(ControlFlowTest, BasicLoop) {
@@ -391,8 +385,8 @@ TEST(ControlFlowTest, BasicLoop) {
   + jump loop
   )");
 
-  EXPECT_EQ(final_state.registers[0], 0);
-  EXPECT_EQ(final_state.registers[1], 10);
+  EXPECT_EQ(final_state.read(0), 0);
+  EXPECT_EQ(final_state.read(1), 10);
 }
 
 }  // namespace

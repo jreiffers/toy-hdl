@@ -10,27 +10,58 @@
 
 namespace isa {
 
-struct uint4_t {
+template <int n>
+struct uintn_t {
   uint8_t val;
 
-  uint4_t() : val(0) {}
-  uint4_t(uint32_t v) : val(v & 15) {}
+  uintn_t() : val(0) {}
+  uintn_t(uint32_t v) : val(v & ((1 << n) - 1)) {}
   operator uint32_t() const { return val; }
 };
 
-struct MachineState {
-  uint4_t Load(uint4_t addr) { return ram[membank][addr]; }
-  void Store(uint4_t addr, uint4_t val) { ram[membank][addr] = val; }
+using uint2_t = uintn_t<2>;
+using uint4_t = uintn_t<4>;
+using uint6_t = uintn_t<6>;
 
-  std::array<uint4_t, 4> registers;
-  std::array<uint4_t, 16> gpi;
-  std::array<std::array<uint4_t, 16>, 2> ram;
-  uint16_t pc = 0;
-  uint4_t bak = 0;  // "stack"
-  bool flag = false;
-  std::deque<uint16_t> call_stack;
-  int membank = 0;
-  int rombank = 0;
+class MachineState {
+ public:
+  virtual ~MachineState() = default;
+
+  virtual uint4_t load(uint4_t bank, uint4_t addr) { return ram[bank][addr]; }
+  virtual uint4_t load(uint4_t addr) { return ram[membank][addr]; }
+  virtual void store(uint4_t addr, uint4_t val) { ram[membank][addr] = val; }
+  virtual uint4_t read(uint2_t reg) { return registers[reg]; }
+
+  virtual uint4_t load_gpi(uint4_t addr) { return gpi[addr]; }
+
+  virtual void write(uint2_t reg, uint4_t val) { registers[reg] = val; }
+
+  virtual void set_pc(uint16_t pc) { pc_ = pc; }
+  virtual void push(uint4_t val) { bak_ = val; }
+  virtual uint4_t pop() { return bak_; }
+
+  virtual uint16_t pc() { return pc_; }
+  virtual void jump(uint6_t addr) { pc_ = (rombank << 6) | addr; }
+  virtual void push_pc() {
+    if (call_stack_.size() >= 4) {
+      throw std::logic_error("Call stack overflow.");
+    }
+    call_stack_.push_back(pc_);
+  }
+  virtual void pop_pc() {
+    if (call_stack_.empty()) {
+      throw std::logic_error("Call stack underflow");
+    }
+    pc_ = call_stack_.back();
+    call_stack_.pop_back();
+  }
+
+  virtual void set_membank(uint4_t bank) { membank = bank; }
+  virtual void set_rombank(uint4_t bank) { rombank = bank; }
+  virtual bool flag() { return flag_; }
+  virtual void set_flag(bool flag) { flag_ = flag; }
+
+  void set_gpi(uint4_t addr, uint4_t val) { gpi[addr] = val; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const MachineState& p) {
@@ -41,10 +72,21 @@ struct MachineState {
                              mem[13], mem[14], mem[15]);
     };
 
-    absl::Format(&sink, "pc%d f%d r%x%x%x%x b%x m{{%s} {%s}}", p.pc, p.flag,
+    absl::Format(&sink, "pc%d f%d r%x%x%x%x b%x m{{%s} {%s}}", p.pc_, p.flag_,
                  p.registers[0], p.registers[1], p.registers[2], p.registers[3],
-                 p.bak, format_mem(p.ram[0]), format_mem(p.ram[1]));
+                 p.bak_, format_mem(p.ram[0]), format_mem(p.ram[1]));
   }
+
+ private:
+  std::array<uint4_t, 4> registers;
+  std::array<uint4_t, 16> gpi;
+  std::array<std::array<uint4_t, 16>, 2> ram;
+  uint16_t pc_ = 0;
+  uint4_t bak_ = 0;  // "stack"
+  bool flag_ = false;
+  std::deque<uint16_t> call_stack_;
+  int membank = 0;
+  int rombank = 0;
 };
 
 class Emulator : private InstructionVisitorWithSemantics<absl::Status> {
