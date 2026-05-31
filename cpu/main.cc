@@ -51,10 +51,10 @@ void BuildAlu(GateNetwork& net) {
 }
 
 void BuildPcGen(GateNetwork& net) {
-  auto current_pc = net.AddInput<5>();
+  auto current_pc = net.AddInput<10>();
   auto do_jump = net.AddInput<1>();
-  auto jump_addr = net.AddInput<5>();
-  PcGen<5> pcgen = MakePcGen(net, current_pc, do_jump, jump_addr);
+  auto jump_addr = net.AddInput<10>();
+  PcGen<10> pcgen = MakePcGen(net, current_pc, do_jump, jump_addr);
   net.DeclareOutput(pcgen.next_pc);
 }
 
