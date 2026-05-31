@@ -28,7 +28,6 @@ enum class AluInput {
   kReadPort0,
   kReadPort1,
   kImm,
-  kZero,
   kFlag,
 };
 
@@ -94,8 +93,6 @@ struct ParsedFields {
         return ReadPort(1, state);
       case AluInput::kImm:
         return imm;
-      case AluInput::kZero:
-        return 0;
       case AluInput::kFlag:
         return state.flag();
     }
@@ -126,6 +123,7 @@ absl::Status Emulator::Op(
   bool alu_not = false;
   bool alu_and = false;
   bool alu_carry_in = false;
+  bool alu_zero_lhs = false;
   bool alu_not_rhs = false;
 
   bool jump = false;
@@ -165,27 +163,25 @@ absl::Status Emulator::Op(
 
   for (auto i : instr_semantics) {
     switch (i) {
-      case InstrSemantics::kAluZeroLhs:
-        f.alu_lhs = AluInput::kZero;
-        break;
-        SET(kAluNotRhs, alu_not_rhs);
-        SET(kAluShr, alu_shr);
-        SET(kAluNot, alu_not);
-        SET(kAluAnd, alu_and);
-        SET(kAluCarryIn, alu_carry_in);
-        SET(kJump, jump);
-        SET(kIndirect, indirect);
-        SET(kPushPc, push_pc);
-        SET(kPopPc, pop_pc);
-        SET(kPushReg, push_reg);
-        SET(kPopReg, pop_reg);
-        SET(kStMem, st_mem);
-        SET(kLdGpi, ld_gpi);
-        SET(kWait, wait);
-        SET(kFlagGet, flag_get);
-        SET(kFlagSet, flag_set);
-        SET(kMemBankSet, mem_bank_set);
-        SET(kRomBankSet, rom_bank_set);
+      SET(kAluZeroLhs, alu_zero_lhs);
+      SET(kAluNotRhs, alu_not_rhs);
+      SET(kAluShr, alu_shr);
+      SET(kAluNot, alu_not);
+      SET(kAluAnd, alu_and);
+      SET(kAluCarryIn, alu_carry_in);
+      SET(kJump, jump);
+      SET(kIndirect, indirect);
+      SET(kPushPc, push_pc);
+      SET(kPopPc, pop_pc);
+      SET(kPushReg, push_reg);
+      SET(kPopReg, pop_reg);
+      SET(kStMem, st_mem);
+      SET(kLdGpi, ld_gpi);
+      SET(kWait, wait);
+      SET(kFlagGet, flag_get);
+      SET(kFlagSet, flag_set);
+      SET(kMemBankSet, mem_bank_set);
+      SET(kRomBankSet, rom_bank_set);
     }
   }
 
@@ -193,15 +189,16 @@ absl::Status Emulator::Op(
     return absl::InvalidArgumentError("Did not get a pred flag.");
   }
 
-  if (*f.pred && !state_.flag()) {
-    state_.set_pc(state_.pc() + 1);
+  if (*f.pred && !state().flag()) {
+    state().set_pc(state().pc() + 1);
     return absl::OkStatus();
   }
 
-  std::optional<uint4_t> alu_lhs = f.GetAluInput(f.alu_lhs, state_);
+  std::optional<uint4_t> alu_lhs = f.GetAluInput(f.alu_lhs, state());
+  std::optional<uint4_t> alu_rhs = f.GetAluInput(f.alu_rhs, state());
   if (f.deref_src && *f.deref_src) {
-    if (alu_lhs) {
-      alu_lhs = state_.load(*alu_lhs);
+    if (alu_rhs) {
+      alu_rhs = state().load(*alu_rhs);
     } else {
       return absl::InvalidArgumentError("Attempted deref of undef.");
     }
@@ -211,7 +208,6 @@ absl::Status Emulator::Op(
     return absl::InvalidArgumentError("neg & shr unsupported");
   }
 
-  std::optional<uint4_t> alu_rhs = f.GetAluInput(f.alu_rhs, state_);
   std::optional<uint4_t> alu_res = std::nullopt;
 
   std::optional<bool> alu_eq = std::nullopt;
@@ -221,34 +217,36 @@ absl::Status Emulator::Op(
     if (!alu_rhs) {
       return absl::InvalidArgumentError("attempted to load undef gpi.");
     }
-    alu_rhs = state_.load_gpi(*alu_rhs);
+    alu_rhs = state().load_gpi(*alu_rhs);
   }
 
   if (flag_get) {
-    alu_rhs = state_.flag() * 15;
+    alu_rhs = state().flag() * 15;
   }
 
   if (mem_bank_set) {
-    auto id = f.ReadPort(1, state_);
+    auto id = f.ReadPort(1, state());
     if (!id) {
       return absl::InvalidArgumentError(
           "attempted to set RAM bank without an index");
     }
-    state_.set_membank(*id);
+    state().set_membank(*id);
   }
 
   if (rom_bank_set) {
-    auto id = f.ReadPort(1, state_);
+    auto id = f.ReadPort(1, state());
     if (!id) {
       return absl::InvalidArgumentError(
           "attempted to set ROM bank without an index");
     }
-    state_.set_rombank(*id);
+    state().set_rombank(*id);
   }
 
-  if (alu_lhs && alu_rhs) {
-    auto ret = Alu<4>::spec({*alu_lhs, *alu_rhs, alu_carry_in, alu_not_rhs,
-                             alu_and, alu_not, alu_shr});
+  if ((alu_lhs || alu_zero_lhs) && alu_rhs) {
+    uint32_t lhs = 3;
+    if (alu_lhs) lhs = *alu_lhs;
+    auto ret = Alu<4>::spec({lhs, *alu_rhs, alu_carry_in, alu_not_rhs, alu_and,
+                             alu_not, alu_shr, alu_zero_lhs});
 
     alu_res = ret[0];
     alu_ge = ret[1];
@@ -256,25 +254,25 @@ absl::Status Emulator::Op(
   }
 
   if (pop_reg) {
-    alu_res = state_.pop();
+    alu_res = state().pop();
   }
 
   if (push_reg) {
     if (!alu_res) {
       return absl::InvalidArgumentError("attempted to push undef.");
     }
-    state_.push(*alu_res);
+    state().push(*alu_res);
   }
 
   if (st_mem) {
     if (!alu_res) {
       return absl::InvalidArgumentError("attempted to store undef.");
     }
-    auto addr = f.ReadPort(0, state_);
+    auto addr = f.ReadPort(0, state());
     if (!addr) {
       return absl::InvalidArgumentError("attempted to store to undef.");
     }
-    state_.store(*addr, *alu_res);
+    state().store(*addr, *alu_res);
   }
 
   if (wait) {
@@ -285,31 +283,31 @@ absl::Status Emulator::Op(
       return absl::InvalidArgumentError("testbit is undef.");
     }
     if (*alu_eq == *f.test_bit_val) {
-      state_.set_pc(state_.pc() + 1);
+      state().set_pc(state().pc() + 1);
     }
   } else {
-    state_.set_pc(state_.pc() + 1);
+    state().set_pc(state().pc() + 1);
   }
 
   if (push_pc) {
-    state_.push_pc();
+    state().push_pc();
   }
 
   if (jump) {
     if (indirect) {
-      state_.jump(state_.read(3) << 2);
+      state().jump(state().read(3) << 2);
     } else {
       if (!f.jmp_addr) {
         return absl::InvalidArgumentError(
             "attempted jump without defined target.");
       }
 
-      state_.jump(*f.jmp_addr);
+      state().jump(*f.jmp_addr);
     }
   }
 
   if (pop_pc) {
-    state_.pop_pc();
+    state().pop_pc();
   }
 
   if (f.wa) {
@@ -317,7 +315,7 @@ absl::Status Emulator::Op(
       return absl::InvalidArgumentError(
           "attempted to write undef to register.");
     }
-    state_.write(*f.wa, *alu_res);
+    state().write(*f.wa, *alu_res);
   }
 
   if (flag_set) {
@@ -332,28 +330,28 @@ absl::Status Emulator::Op(
         if (!alu_eq) {
           return absl::InvalidArgumentError("ALU did not produce a flag.");
         }
-        state_.set_flag(*alu_eq == (*f.comparator == Comparator::kEq));
+        state().set_flag(*alu_eq == (*f.comparator == Comparator::kEq));
         break;
       case Comparator::kGe:
       case Comparator::kLt:
         if (!alu_ge) {
           return absl::InvalidArgumentError("ALU did not produce a flag.");
         }
-        state_.set_flag(*alu_ge == (*f.comparator == Comparator::kGe));
+        state().set_flag(*alu_ge == (*f.comparator == Comparator::kGe));
         break;
     }
   }
 
-  std::cerr << absl::StrFormat("executed %6s: %v\n", mnemonic, state_);
+  std::cerr << absl::StrFormat("executed %6s: %v\n", mnemonic, state());
 
   return absl::OkStatus();
 }
 
 absl::Status Emulator::step() {
-  if (state_.pc() >= rom_.size()) {
+  if (state().pc() >= rom_.size()) {
     return absl::InvalidArgumentError("PC out of bounds.");
   }
-  return DecodeInstruction(rom_[state_.pc()], *this);
+  return DecodeInstruction(rom_[state().pc()], *this);
 }
 
 }  // namespace isa

@@ -15,6 +15,7 @@ namespace {
 
 using ::absl::StrFormat;
 using ::testing::ElementsAre;
+using ::testing::Return;
 
 std::vector<uint16_t> Parse(const std::string& source_code) {
   jank::Context ctx(source_code);
@@ -140,7 +141,7 @@ TEST(EmulatorTest, LoadStore) {
     movi 7 r0
     movi 3 r1
     store r0 r1
-    mov [r0] r2
+    mov [r1] r2
   )");
 
   EXPECT_EQ(final_state.read(2), 7) << absl::StrCat(final_state);
@@ -387,6 +388,55 @@ TEST(ControlFlowTest, BasicLoop) {
 
   EXPECT_EQ(final_state.read(0), 0);
   EXPECT_EQ(final_state.read(1), 10);
+}
+
+class MockStateDef : public MachineState {
+ public:
+  MOCK_METHOD(uint4_t, load, (uint4_t bank, uint4_t addr));
+  MOCK_METHOD(uint4_t, load, (uint4_t addr));
+  MOCK_METHOD(void, store, (uint4_t addr, uint4_t val));
+  MOCK_METHOD(uint4_t, read, (uint2_t reg));
+  MOCK_METHOD(uint4_t, load_gpi, (uint4_t addr));
+  MOCK_METHOD(void, write, (uint2_t reg, uint4_t val));
+  MOCK_METHOD(void, push, (uint4_t val));
+  MOCK_METHOD(uint4_t, pop, ());
+  MOCK_METHOD(void, set_membank, (uint4_t bank));
+  MOCK_METHOD(void, set_rombank, (uint4_t bank));
+  MOCK_METHOD(bool, flag, ());
+  MOCK_METHOD(void, set_flag, (bool flag));
+};
+
+using MockState = ::testing::StrictMock<MockStateDef>;
+
+void RunProgram(const std::string& source_code,
+                std::unique_ptr<MockState> state) {
+  constexpr int kMaxSteps = 1000;
+
+  auto instrs = Parse(source_code);
+  Emulator emulator(instrs, std::move(state));
+  int time = 0;
+  while (time < kMaxSteps && emulator.state().pc() < instrs.size()) {
+    ABSL_EXPECT_OK(emulator.step());
+    ++time;
+  }
+  if (time == kMaxSteps) {
+    ADD_FAILURE() << "Ran out of steps.";
+  }
+}
+
+static const uint2_t kR0(0);
+static const uint2_t kR1(1);
+static const uint2_t kR2(2);
+static const uint2_t kR3(3);
+
+TEST(MockTests, TestDerefMov) {
+  auto state = std::make_unique<MockState>();
+  EXPECT_CALL(*state, read(kR1)).WillOnce(Return(7));
+  EXPECT_CALL(*state, read(kR2)).WillOnce(Return(0));
+
+  EXPECT_CALL(*state, load(uint4_t{7})).WillOnce(Return(15));
+  EXPECT_CALL(*state, write(kR2, uint4_t(15)));
+  RunProgram("mov [r1] r2", std::move(state));
 }
 
 }  // namespace

@@ -91,10 +91,14 @@ class MachineState {
 
 class Emulator : private InstructionVisitorWithSemantics<absl::Status> {
  public:
-  explicit Emulator(absl::Span<const uint16_t> rom) : rom_(rom) {}
+  explicit Emulator(absl::Span<const uint16_t> rom,
+                    std::unique_ptr<MachineState> state)
+      : rom_(rom), state_(std::move(state)){};
+  explicit Emulator(absl::Span<const uint16_t> rom)
+      : rom_(rom), state_(std::make_unique<MachineState>()) {}
 
   absl::Status step();
-  MachineState& state() { return state_; }
+  MachineState& state() { return *state_; }
 
  private:
   absl::Status Op(
@@ -103,7 +107,7 @@ class Emulator : private InstructionVisitorWithSemantics<absl::Status> {
       absl::Span<const absl::Span<const FieldSemantics>> field_semantics);
 
   absl::Span<const uint16_t> rom_;
-  MachineState state_;
+  std::unique_ptr<MachineState> state_;
 };
 
 }  // namespace isa
