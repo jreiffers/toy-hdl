@@ -62,7 +62,8 @@ TEST(GraphTest, TestAlu) {
   GateReg<1> a = net.AddInput<1>();
   GateReg<1> b = net.AddInput<1>();
 
-  Alu<1> alu = MakeAlu<1>(net, a, b, cin, neg_b, kLowGate, kLowGate, kLowGate);
+  Alu<1> alu = MakeAlu<1>(net, a, b, cin, neg_b, kLowGate, kLowGate, kLowGate,
+                          kLowGate, kLowGate);
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.res);
   net.DeclareOutput(alu.zero);
@@ -76,8 +77,8 @@ TEST(GraphTest, TestAlu) {
   graph::PostDominatorTree pdt(net, toposort);
   pdt.dump();
 
-  GateTerminal pick_mux = Find(net, "alu/pick_b/mux/bit0", GateKind::kMux);
-  GateTerminal pick_not_b = Find(net, "alu/pick_b", GateKind::kNot,
+  GateTerminal pick_mux = Find(net, "alu/pick_b/bit0", GateKind::kMux);
+  GateTerminal pick_not_b = Find(net, "alu/pick_b/bit0", GateKind::kNot,
                                  [&](Gate& g) { return g.input(0) == b[0]; });
   GateTerminal abc_nand = Find(net, "alu/adder/bit0/abc", GateKind::kNand);
 
