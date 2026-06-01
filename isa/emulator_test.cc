@@ -95,6 +95,12 @@ bool Subtnz(MachineState& state, int i, int j) {
   return state.read(r) == ((i - j) & 15) && state.flag() == ((i - j) != 0);
 }
 
+template <int r>
+bool Addtnz(MachineState& state, int i, int j) {
+  return state.read(r) == ((i + j) & 15) &&
+         state.flag() == (((i + j) & 15) != 0);
+}
+
 bool Andtnz(MachineState& state, int i, int j) {
   return state.flag() == ((i & j) != 0);
 }
@@ -202,7 +208,6 @@ TEST(EmulatorTest, Subi) {
   // Imm is always the ALU LHS, but the destination reg should be last. Hmm.
   // TODO double check the sub/subr and operand order mess here.
   TestAll2("movi %d /*i*/ r0 subi %d r0 /*j*/", Sub<0>);
-  TestAll2("movi %d /*i*/ r1 subri %d r1 /*j*/", Subr<1>);
 }
 
 TEST(EmulatorTest, Sub) {
@@ -211,6 +216,14 @@ TEST(EmulatorTest, Sub) {
 }
 
 TEST(EmulatorTest, Subitnz) { TestAll2("movi %d r2 subitnz %d r2", Subtnz<2>); }
+
+TEST(EmulatorTest, Subtnz) {
+  TestAll2("movi %d r2 movi %d r1 subtnz r1 r2", Subtnz<2>);
+}
+
+TEST(EmulatorTest, Addtnz) {
+  TestAll2("movi %d r2 movi %d r1 addtnz r1 r2", Addtnz<2>);
+}
 
 TEST(EmulatorTest, PushPop) {
   EXPECT_EQ(RunProgram("movi 5 r3   push r3   pop r2").read(2), 5);

@@ -180,8 +180,11 @@ void BuildIsa(IsaBuilder& builder) {
   C(builder.DefineInstruction("testi", 0'701'77777777_enc,  // a <cmp> imm
                               cmp_reg_to_imm,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("subri", 0'71000'777777_enc,  // b = imm - b
-                              imm_to_reg, {I::kAluNotRhs, I::kAluNot}));
+  C(builder.DefineInstruction("addtnz", 0'71000'077777_enc,  // b = a + b, test != 0
+                              reg_or_mem_to_reg, {I::kFlagSet}));
+  C(builder.DefineInstruction("subtnz", 0'71000'177777_enc,  // b = b - a, test != 0
+                              reg_or_mem_to_reg,
+                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
   C(builder.DefineInstruction("subitnz",
                               0'71001'777777_enc,  // b = b - imm, test != 0
                               imm_to_reg,

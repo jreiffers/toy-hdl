@@ -146,7 +146,8 @@ absl::Status Emulator::Op(
   bool rom_bank_set = false;
 
   // Yikes, but doing this properly would be too annoying right now.
-  if (mnemonic == "subitnz" || mnemonic == "andtnz") {
+  if (mnemonic == "subitnz" || mnemonic == "andtnz" || mnemonic == "addtnz" ||
+      mnemonic == "subtnz") {
     // Needs circuitry right now. Moving cmp and/or changing the subit opcode
     // could save a few transistors.
     f.comparator = static_cast<Comparator>(2);
