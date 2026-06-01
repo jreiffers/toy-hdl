@@ -29,6 +29,7 @@ enum class FieldSemantics {
 
 enum class InstrSemantics {
   kAluZeroLhs,  // Override the LHS input with 0.
+  kAluZeroRhs,  // Override the RHS input with 0.
   kAluNotRhs,   // rhs = ~rhs
   kAluShr,      // result >>= 1
   kAluNot,      // ~result
@@ -79,7 +80,7 @@ struct Field {
 struct InstructionMask {
   uint32_t opcode_mask;
   uint32_t opcode;
-  int operand_bits;  // Not counting the predication bit.
+  uint32_t operand_mask;
 };
 
 struct Instruction {

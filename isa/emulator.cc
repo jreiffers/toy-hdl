@@ -124,6 +124,7 @@ absl::Status Emulator::Op(
   bool alu_and = false;
   bool alu_carry_in = false;
   bool alu_zero_lhs = false;
+  bool alu_zero_rhs = false;
   bool alu_not_rhs = false;
 
   bool jump = false;
@@ -164,6 +165,7 @@ absl::Status Emulator::Op(
   for (auto i : instr_semantics) {
     switch (i) {
       SET(kAluZeroLhs, alu_zero_lhs);
+      SET(kAluZeroRhs, alu_zero_rhs);
       SET(kAluNotRhs, alu_not_rhs);
       SET(kAluShr, alu_shr);
       SET(kAluNot, alu_not);
@@ -225,7 +227,7 @@ absl::Status Emulator::Op(
   }
 
   if (mem_bank_set) {
-    auto id = f.ReadPort(1, state());
+    auto id = f.ReadPort(0, state());
     if (!id) {
       return absl::InvalidArgumentError(
           "attempted to set RAM bank without an index");
@@ -234,7 +236,7 @@ absl::Status Emulator::Op(
   }
 
   if (rom_bank_set) {
-    auto id = f.ReadPort(1, state());
+    auto id = f.ReadPort(0, state());
     if (!id) {
       return absl::InvalidArgumentError(
           "attempted to set ROM bank without an index");
@@ -242,12 +244,10 @@ absl::Status Emulator::Op(
     state().set_rombank(*id);
   }
 
-  if ((alu_lhs || alu_zero_lhs) && alu_rhs) {
-    uint32_t lhs = 3;
-    if (alu_lhs) lhs = *alu_lhs;
-    auto ret =
-        Alu<4>::spec({lhs, *alu_rhs, alu_carry_in, alu_not_rhs, alu_and,
-                      alu_not, alu_shr, alu_zero_lhs, /*alu_zero_rhs=*/false});
+  if ((alu_lhs || alu_zero_lhs) && (alu_rhs || alu_zero_rhs)) {
+    auto ret = Alu<4>::spec({alu_lhs.value_or(3), alu_rhs.value_or(4),
+                             alu_carry_in, alu_not_rhs, alu_and, alu_not,
+                             alu_shr, alu_zero_lhs, alu_zero_rhs});
 
     alu_res = ret[0];
     alu_ge = ret[1];

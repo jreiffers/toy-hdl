@@ -22,11 +22,10 @@ namespace isa {
 
 constexpr InstructionMask operator""_enc(unsigned long long v) {
   // static_assert(v < 00'77777'77777);
-  int operand_bits = __builtin_ctz(v + 1) / 3;
-
-  uint32_t opcode_mask = 0b0'11111'11111 & ~((1 << operand_bits) - 1);
+  uint32_t opcode_mask = _pext_u32(~v, 02'22222'22222);
   uint32_t opcode = _pext_u32(v, 01'11111'11111) & opcode_mask;
-  return InstructionMask{opcode_mask, opcode, operand_bits};
+  uint32_t operand_mask = _pext_u32(v, 02'22222'22222);
+  return InstructionMask{opcode_mask, opcode, operand_mask};
 };
 
 class IsaBuilder {
@@ -40,19 +39,19 @@ class IsaBuilder {
                                  InstructionMask mask,
                                  absl::Span<const std::string> params,
                                  absl::Span<const InstrSemantics> semantics) {
-    for (uint32_t p = 0; p <= 1 << 10; p += 1 << 10) {  // predicate bit
-      for (uint32_t i = 0; i < (1ul << mask.operand_bits); ++i) {
-        if (used_[mask.opcode + i + p]) {
-          return absl::InvalidArgumentError("Duplicate bitcode.");
-        }
-
-        used_[mask.opcode + i + p] = true;
+    int num = 1 << __builtin_popcount(mask.operand_mask);
+    for (uint32_t i = 0; i < num; ++i) {
+      uint32_t opcode = mask.opcode + _pdep_u32(i, mask.operand_mask);
+      if (used_[opcode]) {
+        return absl::InvalidArgumentError("Duplicate bitcode.");
       }
+
+      used_[opcode] = true;
     }
 
     absl::flat_hash_set<FieldSemantics> used_semantics;
     std::vector<Field> fields;
-    uint32_t parammask = (1 << 10) | ((1ul << mask.operand_bits) - 1);
+    uint32_t parammask = mask.operand_mask;
     for (const auto& param : params) {
       const auto& field = fields_.at(param);
       fields.push_back(field);
@@ -75,8 +74,8 @@ class IsaBuilder {
 
     if (absl::GetFlag(FLAGS_mode) == "instructions") {
       std::cout << mnemonic << ": " << std::bitset<11>(mask.opcode_mask) << ", "
-                << std::bitset<11>(mask.opcode) << ", " << mask.operand_bits
-                << "\n";
+                << std::bitset<11>(mask.opcode) << ", "
+                << std::bitset<11>(mask.operand_mask) << "\n";
       std::cout << "    ";
 
       if (used_semantics.count(FieldSemantics::kRegReadAddr0))
@@ -139,7 +138,6 @@ void BuildIsa(IsaBuilder& builder) {
   builder.DefineField("src",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
   builder.DefineField("dst",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});
   builder.DefineField("dstaddr",   0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
-  builder.DefineField("dstnosrc",  0b00000000011, "Register",   {F::kRegReadAddr1, F::kRegWriteAddr, F::kAluRhs});
   builder.DefineField("val",       0b00000010000, "uint32_t",   {F::kTestBitVal});
   builder.DefineField("deref_src", 0b00000010000, "bool",       {F::kDerefSrc});
 
@@ -162,76 +160,76 @@ void BuildIsa(IsaBuilder& builder) {
 
 #define C ABSL_CHECK_OK
   using I = InstrSemantics;
-  C(builder.DefineInstruction("addi", 0'0000'777777_enc,  // b = b + imm
+  C(builder.DefineInstruction("addi", 0'70000'777777_enc,  // b = b + imm
                               imm_to_reg, {}));
-  C(builder.DefineInstruction("movi", 0'0001'777777_enc, imm_to_reg,  // b = imm
+  C(builder.DefineInstruction("movi", 0'70001'777777_enc,
+                              imm_to_reg,  // b = imm
                               {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("add", 0'00100'77777_enc,  // b = b + a/[a]
+  C(builder.DefineInstruction("add", 0'700100'77777_enc,  // b = b + a/[a]
                               reg_or_mem_to_reg, {}));
-  C(builder.DefineInstruction("and", 0'00101'07777_enc, reg_to_reg,
+  C(builder.DefineInstruction("and", 0'700101'07777_enc, reg_to_reg,
                               {I::kAluAnd}));
-  C(builder.DefineInstruction("andtnz", 0'00101'17777_enc, reg_reg,
+  C(builder.DefineInstruction("andtnz", 0'700101'17777_enc, reg_reg,
                               {I::kAluAnd, I::kFlagSet}));
-  C(builder.DefineInstruction("mov", 0'00110'77777_enc,  // b = a/[a]
+  C(builder.DefineInstruction("mov", 0'700110'77777_enc,  // b = a/[a]
                               reg_or_mem_to_reg, {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("store", 0'001110'7777_enc,  // [b] = a
+  C(builder.DefineInstruction("store", 0'7001110'7777_enc,  // [b] = a
                               reg_to_mem, {I::kAluZeroLhs, I::kStMem}));
-  C(builder.DefineInstruction("ldgpi", 0'001111'7777_enc,  // b = gpi [a]
+  C(builder.DefineInstruction("ldgpi", 0'7001111'7777_enc,  // b = gpi [a]
                               mem_to_reg, {I::kAluZeroLhs, I::kLdGpi}));
-  C(builder.DefineInstruction("testi", 0'01'77777777_enc,  // a <cmp> imm
+  C(builder.DefineInstruction("testi", 0'701'77777777_enc,  // a <cmp> imm
                               cmp_reg_to_imm,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("subri", 0'1000'777777_enc,  // b = imm - b
+  C(builder.DefineInstruction("subri", 0'71000'777777_enc,  // b = imm - b
                               imm_to_reg, {I::kAluNotRhs, I::kAluNot}));
   C(builder.DefineInstruction("subitnz",
-                              0'1001'777777_enc,  // b = b - imm, test != 0
+                              0'71001'777777_enc,  // b = b - imm, test != 0
                               imm_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("jump", 0'1010'777777_enc,  // jump rombank:imm6
+  C(builder.DefineInstruction("jump", 0'71010'777777_enc,  // jump rombank:imm6
                               jump, {I::kJump}));
-  C(builder.DefineInstruction("call", 0'1011'777777_enc,  // call rombank:imm6
+  C(builder.DefineInstruction("call", 0'71011'777777_enc,  // call rombank:imm6
                               jump, {I::kJump, I::kPushPc}));
-  C(builder.DefineInstruction("test", 0'1100'777777_enc,  // a <cmp> b
+  C(builder.DefineInstruction("test", 0'71100'777777_enc,  // a <cmp> b
                               cmp_reg_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("subi", 0'1101'777777_enc,  // b = b - imm
+  C(builder.DefineInstruction("subi", 0'71101'777777_enc,  // b = b - imm
                               imm_to_reg, {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("sub", 0'11100'77777_enc,  // b = b - a/[a]
+  C(builder.DefineInstruction("sub", 0'711100'77777_enc,  // b = b - a/[a]
                               reg_or_mem_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("subr", 0'11101'77777_enc,  // b = a/[a] - b
+  C(builder.DefineInstruction("subr", 0'711101'77777_enc,  // b = a/[a] - b
                               reg_or_mem_to_reg, {I::kAluNotRhs, I::kAluNot}));
   C(builder.DefineInstruction(
       "wait",
-      0'11110'77777_enc,  // wait for gpi [a] =/!= b
+      0'711110'77777_enc,  // wait for gpi [a] =/!= b
       wait, {I::kAluNotRhs, I::kAluCarryIn, I::kWait, I::kLdGpi}));
-  C(builder.DefineInstruction("retpop", 0'11111000'77_enc,  // pop r; ret
-                              {"pred", "dstnosrc"},
+  C(builder.DefineInstruction("retpop", 0'7111110'7700_enc,  // pop r; ret
+                              {"pred", "dst"},
                               {I::kAluZeroLhs, I::kPopPc, I::kPopReg}));
-  C(builder.DefineInstruction("pop", 0'11111001'77_enc,  // pop
-                              {"pred", "dstnosrc"}, {I::kPopReg}));
+  C(builder.DefineInstruction("pop", 0'7111110'7701_enc,  // pop
+                              {"pred", "dst"}, {I::kPopReg}));
   C(builder.DefineInstruction("membank",
-                              0'11111010'77_enc,  // select memory bank r
-                              {"pred", "rhs"}, {I::kMemBankSet}));
-  C(builder.DefineInstruction("not", 0'11111011'77_enc,  // r = ~r
-                              {"pred", "dstnosrc"},
-                              {I::kAluZeroLhs, I::kAluNot}));
-  C(builder.DefineInstruction("shr", 0'11111100'77_enc, {"pred", "dstnosrc"},
-                              {I::kAluShr, I::kAluZeroLhs}));
+                              0'7111110'7710_enc,  // select memory bank r
+                              {"pred", "lhs"}, {I::kMemBankSet}));
+  C(builder.DefineInstruction("not", 0'7111110'7711_enc,  // r = ~r
+                              {"pred", "dst"}, {I::kAluZeroRhs, I::kAluNot}));
+  C(builder.DefineInstruction("shr", 0'7111111'7700_enc, {"pred", "dst"},
+                              {I::kAluShr, I::kAluZeroRhs}));
   C(builder.DefineInstruction("rombank",
-                              0'11111101'77_enc,  // select rom bank r
-                                                  // only affects jumps
-                              {"pred", "rhs"}, {I::kRomBankSet}));
-  C(builder.DefineInstruction("push", 0'11111110'77_enc,  // push
-                              {"pred", "rhs"}, {I::kAluZeroLhs, I::kPushReg}));
-  C(builder.DefineInstruction("jump3", 0'1111111100_enc,  // jump rombank:r3:00
+                              0'7111111'7701_enc,  // select rom bank r
+                                                   // only affects jumps
+                              {"pred", "lhs"}, {I::kRomBankSet}));
+  C(builder.DefineInstruction("push", 0'7111111'7710_enc,  // push
+                              {"pred", "lhs"}, {I::kAluZeroRhs, I::kPushReg}));
+  C(builder.DefineInstruction("jump3", 0'71111110011_enc,  // jump rombank:r3:00
                               {"pred"}, {I::kJump, I::kIndirect}));
-  C(builder.DefineInstruction("call3", 0'1111111101_enc,  // call rombank:r3:00
+  C(builder.DefineInstruction("call3", 0'71111110111_enc,  // call rombank:r3:00
                               {"pred"}, {I::kJump, I::kPushPc, I::kIndirect}));
-  C(builder.DefineInstruction("ret", 0'1111111110_enc,  // ret
+  C(builder.DefineInstruction("ret", 0'71111111011_enc,  // ret
                               {"pred"}, {I::kPopPc}));
   C(builder.DefineInstruction(
-      "invflag", 0'1111111111_enc,  // flag = !flag
+      "invflag", 0'71111111111_enc,  // flag = !flag
       {"pred"},
       {I::kAluZeroLhs, I::kFlagGet, I::kAluCarryIn, I::kAluNot, I::kFlagSet}));
 #undef C
@@ -576,7 +574,7 @@ void PrintInstructions(IsaBuilder& builder) {
     absl::Format(&instrs.emplace_back(),
                  R"(    {"%s", {%d, %d, %d}, {%s}, {%s}},)", instr.mnemonic,
                  instr.mask.opcode_mask, instr.mask.opcode,
-                 instr.mask.operand_bits, absl::StrJoin(fields, ", "),
+                 instr.mask.operand_mask, absl::StrJoin(fields, ", "),
                  GetSemantics(instr.semantics));
   }
 
