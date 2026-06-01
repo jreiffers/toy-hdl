@@ -128,9 +128,7 @@ void BuildIsa(IsaBuilder& builder) {
   using F = FieldSemantics;
   // clang-format off
   builder.DefineField("pred",      0b10000000000, "bool",       {F::kPredication});
-  builder.DefineField("imm",       0b00000001111, "uint32_t",   {F::kAluRhs, F::kImmediate});
-  builder.DefineField("lhsimm",    0b00011000000, "Register",   {F::kRegReadAddr0, F::kAluLhs});  // lhs when imm is used
-  builder.DefineField("dstimm",    0b00000110000, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});  // dst when imm is used
+  builder.DefineField("imm",       0b00011000011, "uint32_t",   {F::kAluRhs, F::kImmediate});
   builder.DefineField("cmp",       0b00000110000, "Comparator", {F::kAluCmp});  // e, gt, ne, le
   builder.DefineField("lhs",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
   builder.DefineField("rhs",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
@@ -148,11 +146,11 @@ void BuildIsa(IsaBuilder& builder) {
   std::vector<std::string> reg_or_mem_to_reg{"pred", "deref_src", "src", "dst"};
   std::vector<std::string> mem_to_reg{"pred", "src", "dst"};
   std::vector<std::string> reg_to_mem{"pred", "src", "dstaddr"};
-  std::vector<std::string> imm_to_reg{"pred", "imm", "dstimm"};
+  std::vector<std::string> imm_to_reg{"pred", "imm", "dst"};
   std::vector<std::string> reg_to_reg{"pred", "src", "dst"};
   std::vector<std::string> reg_reg{"pred", "lhs", "rhs"};
   std::vector<std::string> cmp_reg_to_reg{"pred", "lhs", "rhs", "cmp"};
-  std::vector<std::string> cmp_reg_to_imm{"pred", "imm", "lhsimm", "cmp"};
+  std::vector<std::string> cmp_reg_to_imm{"pred", "imm", "lhs", "cmp"};
 
   std::vector<std::string> jump{"pred", "jumpaddr"};
   std::vector<std::string> testbit{"pred", "bit", "val", "rhs"};
@@ -161,14 +159,14 @@ void BuildIsa(IsaBuilder& builder) {
 #define C ABSL_CHECK_OK
   using I = InstrSemantics;
   // clang-format off
-  C(builder.DefineInstruction("addi",   0'70000'777777_enc,  // b = b + imm
+  C(builder.DefineInstruction("addi",   0'700'77'00'7777_enc,  // b = b + imm
                               imm_to_reg, {}));
-  C(builder.DefineInstruction("movi",   0'70001'777777_enc,
+  C(builder.DefineInstruction("movi",   0'700'77'01'7777_enc,
                               imm_to_reg,  // b = imm
                               {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("subi",   0'70010'777777_enc,  // b = b - imm
+  C(builder.DefineInstruction("subi",   0'700'77'10'7777_enc,  // b = b - imm
                               imm_to_reg, {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("subitnz",0'70011'777777_enc,  // b = b - imm, test != 0
+  C(builder.DefineInstruction("subitnz",0'700'77'11'7777_enc,  // b = b - imm, test != 0
                               imm_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet, I::kCmpNz}));
   C(builder.DefineInstruction("testi",  0'701'77777777_enc,  // a <cmp> imm
@@ -511,8 +509,9 @@ void PrintEncoderDecoder(IsaBuilder& builder) {
                  instr.mask.opcode_mask, instr.mask.opcode);
     std::vector<std::string> args;
     for (const auto& field : instr.fields) {
-      absl::Format(&args.emplace_back(), "static_cast<%s>((instr & %d) >> %d)",
-                   field.type, field.mask, __builtin_ctz(field.mask));
+      absl::Format(&args.emplace_back(),
+                   "static_cast<%s>(_pext_u32(instr, %d))", field.type,
+                   field.mask);
     }
     absl::Format(&dec_lines.emplace_back(), R"(    return visitor.%s(%s);)",
                  FunctionName(instr.mnemonic), absl::StrJoin(args, ", "));
@@ -527,10 +526,10 @@ void PrintEncoderDecoder(IsaBuilder& builder) {
       absl::Format(&enc_lines.emplace_back(),
                    "    auto i_%s = static_cast<uint32_t>(%s);", field.name,
                    field.name);
-      absl::Format(&enc_lines.emplace_back(), "    assert(i_%s <= %d);",
-                   field.name, field.mask >> __builtin_ctz(field.mask));
-      absl::Format(&fields.emplace_back(), "(i_%s << %d)", field.name,
-                   __builtin_ctz(field.mask));
+      absl::Format(&enc_lines.emplace_back(), "    assert(i_%s < %d);",
+                   field.name, 1 << __builtin_popcount(field.mask));
+      absl::Format(&fields.emplace_back(), "_pdep_u32(i_%s, %d)", field.name,
+                   field.mask);
     }
 
     absl::Format(&enc_lines.emplace_back(),
