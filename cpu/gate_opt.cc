@@ -415,6 +415,7 @@ bool MergeGates(GateNetwork& net) {
         existing_nots.push_back(existing_not);
       } else {
         replacement_cost += 2;
+        existing_nots.push_back(std::nullopt);
       }
     }
 

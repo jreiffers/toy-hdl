@@ -123,6 +123,7 @@ struct DynGateReg {
   template <int bw>
   DynGateReg(const GateReg<bw>& reg)
       : vals_(reg.vals.begin(), reg.vals.end()) {}
+  DynGateReg(GateTerminal terminal) : vals_{terminal} {}
 
   int bitwidth() const { return vals_.size(); }
   GateTerminal operator[](size_t i) const { return vals_[i]; }

@@ -47,3 +47,23 @@ TEST(GateOptTest, MuxToEq) {
   EXPECT_EQ(to_string(out.input(0)), "input[0]");
   EXPECT_EQ(to_string(out.input(1)), "input[1]");
 }
+
+TEST(GateOptTest, RegressionTestNoExistingNot) {
+  GateNetwork net;
+  GateReg<1> a = net.AddInput<1>();
+  GateReg<1> b = net.AddInput<1>();
+  GateReg<1> c = net.AddInput<1>();
+
+  GateTerminal x = net.Nand({a, b});
+  GateTerminal r = net.Nand({net.Nand({c, x}), net.Not(net.Nor({c, x}))});
+  net.DeclareOutput(r);
+
+  OptNoTG(net);
+
+  Gate& out = *net.GetOutput(0)[0].first;
+  EXPECT_EQ(to_string(out), "eq");
+  EXPECT_EQ(to_string(out.input(0)), "nand[0]");
+  EXPECT_EQ(to_string(out.input(1)), "input[2]");
+  EXPECT_EQ(to_string(out.input(2)), "not[0]");
+  EXPECT_EQ(to_string(out.input(3)), "not[0]");
+}
