@@ -31,9 +31,11 @@ std::string ngspice_label(NodeId id) {
   return label(id);
 }
 
+static int graph_counter = 0;
+
 void print_graphviz(const Network& net) {
   auto out = Flatten(net.outputs());
-  std::cout << "graph d {\n";
+  std::cout << "graph d" << (graph_counter++) << " {\n";
   for (int i = 0; i < net.num_transistors(); ++i) {
     TransistorId tid(i);
     int d = 2;
@@ -80,7 +82,7 @@ void print_graphviz(const Network& net) {
 }
 
 void print_graphviz(
-    GateNetwork& net,
+    GateNetwork& net, std::string_view label,
     const absl::flat_hash_map<GateTerminal, std::optional<bool>>& colors,
     std::ostream& stream) {
   absl::flat_hash_map<Gate*, int> ids;
@@ -98,7 +100,10 @@ void print_graphviz(
     return os.str();
   };
 
-  stream << "digraph d {\n";
+  stream << "digraph d" << (graph_counter++) << " {\n";
+  if (!label.empty()) {
+    stream << "  label = \"" << label << "\";\n";
+  }
   net.WalkUnordered([&](int id, Gate& gate) {
     int d = 2;
     for (const auto& scope : gate.scope()) {

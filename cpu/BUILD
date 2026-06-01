@@ -26,6 +26,15 @@ cc_library(
 )
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    deps = [
+      "@abseil-cpp//absl/flags:flag",
+    ],
+)
+
+cc_library(
     name = "gate_lib",
     srcs = ["gate_lib.cc"],
     hdrs = ["gate_lib.h"],
@@ -74,6 +83,7 @@ cc_library(
     hdrs = ["gate_opt.h"],
     deps = [
         ":export",
+        ":flags",
         ":gate_lib",
         ":graph",
         "@abseil-cpp//absl/algorithm:container",

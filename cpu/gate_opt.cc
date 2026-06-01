@@ -14,6 +14,8 @@
 #include "absl/container/linked_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "cpu/export.h"
+#include "cpu/flags.h"
 #include "cpu/graph.h"
 
 namespace {
@@ -146,6 +148,10 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
     ever_changed |= changed;
   } while (changed);
 
+  if (absl::GetFlag(FLAGS_dump_after_all)) {
+    print_graphviz(net, "fold-gates");
+  }
+
   return ever_changed;
 }
 
@@ -183,6 +189,10 @@ bool CseGates(GateNetwork& net) {
     });
     ever_changed |= changed;
   } while (changed);
+
+  if (absl::GetFlag(FLAGS_dump_after_all)) {
+    print_graphviz(net, "cse-gates");
+  }
 
   return ever_changed;
 }
@@ -436,6 +446,10 @@ bool MergeGates(GateNetwork& net) {
     }
 
     changed = true;
+  }
+
+  if (absl::GetFlag(FLAGS_dump_after_all)) {
+    print_graphviz(net, "merge-gates");
   }
 
   return changed;

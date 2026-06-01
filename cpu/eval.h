@@ -215,7 +215,7 @@ absl::StatusOr<int> GateSpec<T, num_inputs>::Verify(GateNetwork& net) {
               colors[key] = val == GateTerminalState::kHigh;
             }
           }
-          print_graphviz(net, colors, s);
+          print_graphviz(net, /*label=*/"", colors, s);
 
           std::string error =
               absl::StrCat("Mismatched output ", i, ". expected ",
