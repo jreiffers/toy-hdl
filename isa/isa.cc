@@ -139,7 +139,7 @@ void BuildIsa(IsaBuilder& builder) {
   builder.DefineField("src",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
   builder.DefineField("dst",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});
   builder.DefineField("dstaddr",   0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
-  builder.DefineField("dstnosrc",  0b00000000011, "Register",   {F::kRegReadAddr0, F::kRegWriteAddr, F::kAluRhs});
+  builder.DefineField("dstnosrc",  0b00000000011, "Register",   {F::kRegReadAddr1, F::kRegWriteAddr, F::kAluRhs});
   builder.DefineField("val",       0b00000010000, "uint32_t",   {F::kTestBitVal});
   builder.DefineField("deref_src", 0b00000010000, "bool",       {F::kDerefSrc});
 
