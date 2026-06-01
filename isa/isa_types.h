@@ -54,6 +54,8 @@ enum class InstrSemantics {
 
   kMemBankSet,
   kRomBankSet,
+
+  kCmpNz,  // override comparator to kNe
 };
 
 enum class Register {

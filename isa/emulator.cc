@@ -145,13 +145,6 @@ absl::Status Emulator::Op(
   bool mem_bank_set = false;
   bool rom_bank_set = false;
 
-  // Yikes, but doing this properly would be too annoying right now.
-  if (mnemonic == "subitnz" || mnemonic == "andtnz" || mnemonic == "addtnz" ||
-      mnemonic == "subtnz") {
-    // Needs circuitry right now. Moving cmp and/or changing the subit opcode
-    // could save a few transistors.
-    f.comparator = static_cast<Comparator>(2);
-  }
   if (mnemonic == "invflag") {
     // Decodes instruction as comparator, doesn't need circuitry.
     f.comparator = static_cast<Comparator>(3);
@@ -165,26 +158,29 @@ absl::Status Emulator::Op(
 
   for (auto i : instr_semantics) {
     switch (i) {
-      SET(kAluZeroLhs, alu_zero_lhs);
-      SET(kAluZeroRhs, alu_zero_rhs);
-      SET(kAluNotRhs, alu_not_rhs);
-      SET(kAluShr, alu_shr);
-      SET(kAluNot, alu_not);
-      SET(kAluAnd, alu_and);
-      SET(kAluCarryIn, alu_carry_in);
-      SET(kJump, jump);
-      SET(kIndirect, indirect);
-      SET(kPushPc, push_pc);
-      SET(kPopPc, pop_pc);
-      SET(kPushReg, push_reg);
-      SET(kPopReg, pop_reg);
-      SET(kStMem, st_mem);
-      SET(kLdGpi, ld_gpi);
-      SET(kWait, wait);
-      SET(kFlagGet, flag_get);
-      SET(kFlagSet, flag_set);
-      SET(kMemBankSet, mem_bank_set);
-      SET(kRomBankSet, rom_bank_set);
+      case InstrSemantics::kCmpNz:
+        f.comparator = Comparator::kNe;
+        break;
+        SET(kAluZeroLhs, alu_zero_lhs);
+        SET(kAluZeroRhs, alu_zero_rhs);
+        SET(kAluNotRhs, alu_not_rhs);
+        SET(kAluShr, alu_shr);
+        SET(kAluNot, alu_not);
+        SET(kAluAnd, alu_and);
+        SET(kAluCarryIn, alu_carry_in);
+        SET(kJump, jump);
+        SET(kIndirect, indirect);
+        SET(kPushPc, push_pc);
+        SET(kPopPc, pop_pc);
+        SET(kPushReg, push_reg);
+        SET(kPopReg, pop_reg);
+        SET(kStMem, st_mem);
+        SET(kLdGpi, ld_gpi);
+        SET(kWait, wait);
+        SET(kFlagGet, flag_get);
+        SET(kFlagSet, flag_set);
+        SET(kMemBankSet, mem_bank_set);
+        SET(kRomBankSet, rom_bank_set);
     }
   }
 

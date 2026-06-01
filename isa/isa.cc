@@ -160,68 +160,69 @@ void BuildIsa(IsaBuilder& builder) {
 
 #define C ABSL_CHECK_OK
   using I = InstrSemantics;
-  C(builder.DefineInstruction("addi", 0'70000'777777_enc,  // b = b + imm
+  // clang-format off
+  C(builder.DefineInstruction("addi",   0'70000'777777_enc,  // b = b + imm
                               imm_to_reg, {}));
-  C(builder.DefineInstruction("movi", 0'70001'777777_enc,
+  C(builder.DefineInstruction("movi",   0'70001'777777_enc,
                               imm_to_reg,  // b = imm
                               {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("add", 0'700100'77777_enc,  // b = b + a/[a]
-                              reg_or_mem_to_reg, {}));
-  C(builder.DefineInstruction("and", 0'700101'07777_enc, reg_to_reg,
-                              {I::kAluAnd}));
-  C(builder.DefineInstruction("andtnz", 0'700101'17777_enc, reg_reg,
-                              {I::kAluAnd, I::kFlagSet}));
-  C(builder.DefineInstruction("mov", 0'700110'77777_enc,  // b = a/[a]
-                              reg_or_mem_to_reg, {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("store", 0'7001110'7777_enc,  // [b] = a
-                              reg_to_mem, {I::kAluZeroLhs, I::kStMem}));
-  C(builder.DefineInstruction("ldgpi", 0'7001111'7777_enc,  // b = gpi [a]
-                              mem_to_reg, {I::kAluZeroLhs, I::kLdGpi}));
-  C(builder.DefineInstruction("testi", 0'701'77777777_enc,  // a <cmp> imm
+  C(builder.DefineInstruction("subi",   0'70010'777777_enc,  // b = b - imm
+                              imm_to_reg, {I::kAluNotRhs, I::kAluCarryIn}));
+  C(builder.DefineInstruction("subitnz",0'70011'777777_enc,  // b = b - imm, test != 0
+                              imm_to_reg,
+                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet, I::kCmpNz}));
+  C(builder.DefineInstruction("testi",  0'701'77777777_enc,  // a <cmp> imm
                               cmp_reg_to_imm,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("addtnz", 0'71000'077777_enc,  // b = a + b, test != 0
-                              reg_or_mem_to_reg, {I::kFlagSet}));
-  C(builder.DefineInstruction("subtnz", 0'71000'177777_enc,  // b = b - a, test != 0
-                              reg_or_mem_to_reg,
-                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("subitnz",
-                              0'71001'777777_enc,  // b = b - imm, test != 0
-                              imm_to_reg,
-                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("jump", 0'71010'777777_enc,  // jump rombank:imm6
-                              jump, {I::kJump}));
-  C(builder.DefineInstruction("call", 0'71011'777777_enc,  // call rombank:imm6
-                              jump, {I::kJump, I::kPushPc}));
-  C(builder.DefineInstruction("test", 0'71100'777777_enc,  // a <cmp> b
-                              cmp_reg_to_reg,
-                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
-  C(builder.DefineInstruction("subi", 0'71101'777777_enc,  // b = b - imm
-                              imm_to_reg, {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("sub", 0'711100'77777_enc,  // b = b - a/[a]
+
+  C(builder.DefineInstruction("add",    0'710000'77777_enc,  // b = b + a/[a]
+                              reg_or_mem_to_reg, {}));
+  C(builder.DefineInstruction("mov",    0'710001'77777_enc,  // b = a/[a]
+                              reg_or_mem_to_reg, {I::kAluZeroLhs}));
+  C(builder.DefineInstruction("sub",    0'710010'77777_enc,  // b = b - a/[a]
                               reg_or_mem_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("subr", 0'711101'77777_enc,  // b = a/[a] - b
+  C(builder.DefineInstruction("subr",   0'710011'77777_enc,  // b = a/[a] - b
                               reg_or_mem_to_reg, {I::kAluNotRhs, I::kAluNot}));
-  C(builder.DefineInstruction(
-      "wait",
-      0'711110'77777_enc,  // wait for gpi [a] =/!= b
-      wait, {I::kAluNotRhs, I::kAluCarryIn, I::kWait, I::kLdGpi}));
+  C(builder.DefineInstruction("subtnz", 0'710100'77777_enc,  // b = b - a, test != 0
+                              reg_or_mem_to_reg,
+                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet, I::kCmpNz}));
+  C(builder.DefineInstruction("addtnz", 0'710101'77777_enc,  // b = a + b, test != 0
+                              reg_or_mem_to_reg, {I::kFlagSet, I::kCmpNz}));
+
+  C(builder.DefineInstruction("and",    0'7101100'7777_enc, reg_to_reg,
+                              {I::kAluAnd}));
+  C(builder.DefineInstruction("andtnz", 0'7101101'7777_enc, reg_reg,
+                              {I::kAluAnd, I::kFlagSet, I::kCmpNz}));
+  C(builder.DefineInstruction("store",  0'7101110'7777_enc,  // [b] = a
+                              reg_to_mem, {I::kAluZeroLhs, I::kStMem}));
+  C(builder.DefineInstruction("ldgpi",  0'7101111'7777_enc,  // b = gpi [a]
+                              mem_to_reg, {I::kAluZeroLhs, I::kLdGpi}));
+
+  C(builder.DefineInstruction("jump",   0'71100'777777_enc,  // jump rombank:imm6
+                              jump, {I::kJump}));
+  C(builder.DefineInstruction("call",   0'71101'777777_enc,  // call rombank:imm6
+                              jump, {I::kJump, I::kPushPc}));
+
+  C(builder.DefineInstruction("test",   0'71110'777777_enc,  // a <cmp> b
+                              cmp_reg_to_reg,
+                              {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
+
+  C(builder.DefineInstruction("wait",   0'711110'77777_enc,  // wait for gpi [a] =/!= b
+                              wait, {I::kAluNotRhs, I::kAluCarryIn, I::kWait, I::kLdGpi}));
+
   C(builder.DefineInstruction("retpop", 0'7111110'7700_enc,  // pop r; ret
                               {"pred", "dst"},
                               {I::kAluZeroLhs, I::kPopPc, I::kPopReg}));
   C(builder.DefineInstruction("pop", 0'7111110'7701_enc,  // pop
                               {"pred", "dst"}, {I::kPopReg}));
-  C(builder.DefineInstruction("membank",
-                              0'7111110'7710_enc,  // select memory bank r
+  C(builder.DefineInstruction("membank", 0'7111110'7710_enc,  // select memory bank r
                               {"pred", "lhs"}, {I::kMemBankSet}));
   C(builder.DefineInstruction("not", 0'7111110'7711_enc,  // r = ~r
                               {"pred", "dst"}, {I::kAluZeroRhs, I::kAluNot}));
   C(builder.DefineInstruction("shr", 0'7111111'7700_enc, {"pred", "dst"},
                               {I::kAluShr, I::kAluZeroRhs}));
-  C(builder.DefineInstruction("rombank",
-                              0'7111111'7701_enc,  // select rom bank r
-                                                   // only affects jumps
+  C(builder.DefineInstruction("rombank", 0'7111111'7701_enc,  // select rom bank r
                               {"pred", "lhs"}, {I::kRomBankSet}));
   C(builder.DefineInstruction("push", 0'7111111'7710_enc,  // push
                               {"pred", "lhs"}, {I::kAluZeroRhs, I::kPushReg}));
@@ -235,6 +236,7 @@ void BuildIsa(IsaBuilder& builder) {
       "invflag", 0'71111111111_enc,  // flag = !flag
       {"pred"},
       {I::kAluZeroLhs, I::kFlagGet, I::kAluCarryIn, I::kAluNot, I::kFlagSet}));
+  // clang-format on
 #undef C
 }
 
