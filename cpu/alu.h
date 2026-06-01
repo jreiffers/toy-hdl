@@ -15,7 +15,7 @@ struct Alu {
     constexpr uint32_t wmask = mask | (1ull << bw);
 
     uint32_t a = inputs[7] ? 0 : inputs[0];
-    uint32_t b = inputs[1];
+    uint32_t b = inputs[8] ? 0 : inputs[1];
     uint32_t cin = inputs[2];
     bool neg_b = inputs[3];
     bool compute_and = inputs[4];
@@ -37,12 +37,17 @@ struct Alu {
 template <int bw>
 Alu<bw> MakeAlu(GateNetwork& net, GateReg<bw> a, GateReg<bw> b,
                 GateReg<1> carry_in, GateReg<1> not_b, GateReg<1> compute_and,
-                GateReg<1> not_out, GateReg<1> shr, GateReg<1> zero_lhs) {
+                GateReg<1> not_out, GateReg<1> shr, GateReg<1> zero_lhs,
+                GateReg<1> zero_rhs) {
   ScopeGuard scope(net, "alu");
   GateReg<bw> picked_b;
   {
     ScopeGuard pick(net, "pick_b");
-    picked_b = net.Mux(not_b[0], net.Not(b), b);
+    for (int i = 0; i < bw; ++i) {
+      ScopeGuard bit(net, absl::StrCat("bit", i));
+      auto b_bit = net.And(b[i], net.Not(zero_rhs));
+      picked_b[i] = net.Mux(not_b[0], net.Not(b_bit), b_bit);
+    }
   }
 
   GateReg<bw> picked_a;

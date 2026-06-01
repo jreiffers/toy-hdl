@@ -245,8 +245,9 @@ absl::Status Emulator::Op(
   if ((alu_lhs || alu_zero_lhs) && alu_rhs) {
     uint32_t lhs = 3;
     if (alu_lhs) lhs = *alu_lhs;
-    auto ret = Alu<4>::spec({lhs, *alu_rhs, alu_carry_in, alu_not_rhs, alu_and,
-                             alu_not, alu_shr, alu_zero_lhs});
+    auto ret =
+        Alu<4>::spec({lhs, *alu_rhs, alu_carry_in, alu_not_rhs, alu_and,
+                      alu_not, alu_shr, alu_zero_lhs, /*alu_zero_rhs=*/false});
 
     alu_res = ret[0];
     alu_ge = ret[1];
