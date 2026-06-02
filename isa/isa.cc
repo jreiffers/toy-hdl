@@ -5,8 +5,8 @@
 #include <string_view>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/linked_hash_map.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/absl_check.h"
@@ -104,8 +104,12 @@ class IsaBuilder {
     return std::count(used_.begin(), used_.end(), true);
   }
 
+  const absl::linked_hash_map<std::string, Field> fields() const {
+    return fields_;
+  }
+
  private:
-  absl::flat_hash_map<std::string, Field> fields_;
+  absl::linked_hash_map<std::string, Field> fields_;
   std::vector<Instruction> instructions_;
   std::vector<bool> used_;
 };
@@ -133,8 +137,8 @@ void BuildIsa(IsaBuilder& builder) {
   builder.DefineField("lhs",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
   builder.DefineField("rhs",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
 
-  builder.DefineField("src",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
   builder.DefineField("dst",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});
+  builder.DefineField("src",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
   builder.DefineField("dstaddr",   0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
   builder.DefineField("val",       0b00000010000, "uint32_t",   {F::kTestBitVal});
   builder.DefineField("deref_src", 0b00000010000, "bool",       {F::kDerefSrc});
@@ -190,7 +194,7 @@ void BuildIsa(IsaBuilder& builder) {
 
   C(builder.DefineInstruction("and",    0'7101100'7777_enc, reg_to_reg,
                               {I::kAluAnd}));
-  C(builder.DefineInstruction("andtnz", 0'7101101'7777_enc, reg_reg,
+  C(builder.DefineInstruction("andtnz", 0'7101101'7777_enc, reg_reg, // test a & b != 0
                               {I::kAluAnd, I::kFlagSet, I::kCmpNz}));
   C(builder.DefineInstruction("store",  0'7101110'7777_enc,  // [b] = a
                               reg_to_mem, {I::kAluZeroLhs, I::kStMem}));
@@ -552,6 +556,13 @@ static constexpr std::string_view kInstructionsTemplate = R"(
 
 namespace isa {
 
+absl::Span<const Field> GetFields() {
+  static auto& fields = *new std::vector<Field>{
+%s
+  };
+  return fields;
+}
+
 absl::Span<const Instruction> GetInstructions() {
   static auto& instructions = *new std::vector<Instruction>{
 %s
@@ -567,6 +578,13 @@ absl::Span<const Instruction> GetInstructions() {
 void PrintInstructions(IsaBuilder& builder) {
   std::vector<std::string> instrs;
   // Why not just call the builder? Yes.
+  std::vector<std::string> all_fields;
+  for (auto& [_, field] : builder.fields()) {
+    absl::Format(&all_fields.emplace_back(), R"(    {%d, "%s", "%s", %s},)",
+                 field.mask, field.name, field.type,
+                 GetSemantics(field.semantics));
+  }
+
   for (auto& instr : builder.instructions()) {
     std::vector<std::string> fields;
     for (auto& field : instr.fields) {
@@ -583,7 +601,8 @@ void PrintInstructions(IsaBuilder& builder) {
   }
 
   std::string out;
-  absl::Format(&out, kInstructionsTemplate, absl::StrJoin(instrs, "\n"));
+  absl::Format(&out, kInstructionsTemplate, absl::StrJoin(all_fields, "\n"),
+               absl::StrJoin(instrs, "\n"));
   std::cout << out;
 };
 

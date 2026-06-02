@@ -13,7 +13,7 @@ cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":isa_types",
-        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:linked_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",

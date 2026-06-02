@@ -6,6 +6,7 @@
 
 namespace isa {
 
+absl::Span<const Field> GetFields();
 absl::Span<const Instruction> GetInstructions();
 
 }  // namespace isa
