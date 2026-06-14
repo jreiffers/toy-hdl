@@ -291,14 +291,13 @@ struct GateNetwork {
 };
 
 struct ScopeGuard {
-  ScopeGuard(GateNetwork& net, std::string scope) : net_(net), depth_(1) {
-    net_.PushScope(std::move(scope));
+  ScopeGuard(GateNetwork& net, std::string_view scope) : net_(net), depth_(1) {
+    net_.PushScope(std::string(scope));
   }
   ScopeGuard(GateNetwork& net, std::vector<std::string> scope)
       : net_(net), depth_(scope.size()) {
     for (auto& s : scope) net_.PushScope(std::move(s));
   }
-
   ~ScopeGuard() {
     for (int i = 0; i < depth_; ++i) net_.PopScope();
   }

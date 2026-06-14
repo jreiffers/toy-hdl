@@ -36,16 +36,19 @@ template <int bw>
 void BuildAlu(GateNetwork& net) {
   auto a = net.AddInput<bw>("a");
   auto b = net.AddInput<bw>("b");
+  auto c = net.AddInput<bw>("c");
+
+  auto a_enable = net.AddInput<1>("a_enable");
+  auto b_lut = net.AddInput<2>("b_lut");
+  auto c_enable = net.AddInput<1>("c_enable");
+
   auto carry_in = net.AddInput<1>("cin");
-  auto not_b = net.AddInput<1>("not_b");
   auto compute_and = net.AddInput<1>("and");
   auto not_out = net.AddInput<1>("not_out");
   auto shr = net.AddInput<1>("shr");
-  auto zero_lhs = net.AddInput<1>("zero_lhs");
-  auto zero_rhs = net.AddInput<1>("zero_rhs");
 
-  Alu<bw> alu = MakeAlu<bw>(net, a, b, carry_in, not_b, compute_and, not_out,
-                            shr, zero_lhs, zero_rhs);
+  Alu<bw> alu = MakeAlu<bw>(net, a, b, c, a_enable, b_lut, c_enable, carry_in,
+                            compute_and, not_out, shr);
   net.DeclareOutput(alu.res, "result");
   net.DeclareOutput(alu.carry_out, "cout");
   net.DeclareOutput(alu.zero, "zero");
@@ -89,6 +92,8 @@ int main(int argc, char* argv[]) {
     BuildAlu<4>(net);
   } else if (mod == "alu2") {
     BuildAlu<2>(net);
+  } else if (mod == "alu1") {
+    BuildAlu<1>(net);
   } else if (mod == "pcgen") {
     BuildPcGen(net);
   } else if (mod == "register") {

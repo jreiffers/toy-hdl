@@ -5,6 +5,8 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+
 namespace isa {
 
 enum class FieldSemantics {
@@ -77,6 +79,10 @@ struct Field {
   std::string name;
   std::string type;
   std::vector<FieldSemantics> semantics;
+
+  bool Has(FieldSemantics sem) const {
+    return absl::c_contains(semantics, sem);
+  }
 };
 
 struct InstructionMask {
@@ -95,6 +101,16 @@ struct Instruction {
     for (auto& field : fields)
       if (field.name == name) return true;
     return false;
+  }
+
+  bool HasField(FieldSemantics sem) const {
+    for (auto& field : fields)
+      if (field.Has(sem)) return true;
+    return false;
+  }
+
+  bool Has(InstrSemantics sem) const {
+    return absl::c_contains(semantics, sem);
   }
 };
 

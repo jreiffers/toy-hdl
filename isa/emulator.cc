@@ -8,6 +8,7 @@
 #include "absl/strings/str_cat.h"
 #include "cpu/alu.h"
 #include "isa/encdec.h"
+#include "isa/instructions.h"
 #include "isa/visitor.h"
 
 namespace isa {
@@ -40,7 +41,7 @@ std::optional<AluInput> InferAluInput(absl::Span<const FieldSemantics> field) {
 
 struct ParsedFields {
   static absl::StatusOr<ParsedFields> Get(
-      absl::Span<const uint32_t> args,
+      uint32_t instr, absl::Span<const uint32_t> args,
       absl::Span<const absl::Span<const FieldSemantics>> field_semantics) {
 #define SET(c, target)                                                       \
   case FieldSemantics::c:                                                    \
@@ -56,56 +57,39 @@ struct ParsedFields {
     break
 
     ParsedFields ret;
+    ret.ra0 =
+        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegReadAddr0));
+    ret.ra1 =
+        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegReadAddr1));
+    ret.imm = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kImmediate));
+    ret.imm_valid = false;
+    ret.comparator = static_cast<Comparator>(
+        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kAluCmp)));
+
     for (int i = 0; i < args.size(); ++i) {
       for (auto f : field_semantics[i]) {
         switch (f) {
           SET(kPredication, ret.pred);
-          SET(kRegReadAddr0, ret.ra0);
-          SET(kRegReadAddr1, ret.ra1);
           SET(kRegWriteAddr, ret.wa);
-          SET(kImmediate, ret.imm);
-          SET(kAluCmp, ret.comparator);
           SET(kTestBitVal, ret.test_bit_val);
           SET(kDerefSrc, ret.deref_src);
           SET(kJumpAddr, ret.jmp_addr);
 
-          SET_ALU(kAluLhs, ret.alu_lhs);
-          SET_ALU(kAluRhs, ret.alu_rhs);
+          case FieldSemantics::kImmediate:
+            ret.imm_valid = true;
         }
       }
     }
     return ret;
   }
 
-  std::optional<uint4_t> ReadPort(int i, MachineState& state) {
-    auto port = i == 0 ? ra0 : ra1;
-    if (!port) return std::nullopt;
-    return state.read(*port);
-  }
-
-  std::optional<uint4_t> GetAluInput(std::optional<AluInput> input,
-                                     MachineState& state) {
-    if (!input) return std::nullopt;
-    switch (*input) {
-      case AluInput::kReadPort0:
-        return ReadPort(0, state);
-      case AluInput::kReadPort1:
-        return ReadPort(1, state);
-      case AluInput::kImm:
-        return imm;
-      case AluInput::kFlag:
-        return state.flag();
-    }
-  }
-
   std::optional<bool> pred = std::nullopt;
-  std::optional<int> ra0 = std::nullopt;
-  std::optional<int> ra1 = std::nullopt;
+  int ra0;
+  int ra1;
   std::optional<int> wa = std::nullopt;
-  std::optional<uint4_t> imm = std::nullopt;
-  std::optional<Comparator> comparator = std::nullopt;
-  std::optional<AluInput> alu_lhs = std::nullopt;
-  std::optional<AluInput> alu_rhs = std::nullopt;
+  uint4_t imm;
+  bool imm_valid;
+  Comparator comparator;
   std::optional<bool> test_bit_val = std::nullopt;
   std::optional<bool> deref_src = std::nullopt;
   std::optional<uint16_t> jmp_addr = std::nullopt;
@@ -115,7 +99,7 @@ absl::Status Emulator::Op(
     std::string_view mnemonic, absl::Span<const uint32_t> args,
     absl::Span<const InstrSemantics> instr_semantics,
     absl::Span<const absl::Span<const FieldSemantics>> field_semantics) {
-  auto maybe_f = ParsedFields::Get(args, field_semantics);
+  auto maybe_f = ParsedFields::Get(rom_[state().pc()], args, field_semantics);
   if (!maybe_f.ok()) return maybe_f.status();
   auto f = std::move(*maybe_f);
 
@@ -193,94 +177,59 @@ absl::Status Emulator::Op(
     return absl::OkStatus();
   }
 
-  std::optional<uint4_t> alu_lhs = f.GetAluInput(f.alu_lhs, state());
-  std::optional<uint4_t> alu_rhs = f.GetAluInput(f.alu_rhs, state());
+  uint4_t rd_port_0 = state().read(f.ra0);
+  uint4_t rd_port_1 = state().read(f.ra1);
+
   if (f.deref_src && *f.deref_src) {
-    if (alu_rhs) {
-      alu_rhs = state().load(*alu_rhs);
-    } else {
-      return absl::InvalidArgumentError("Attempted deref of undef.");
-    }
+    rd_port_1 = state().load(rd_port_1);
   }
 
   if (alu_not && alu_shr) {
     return absl::InvalidArgumentError("neg & shr unsupported");
   }
 
-  std::optional<uint4_t> alu_res = std::nullopt;
-
-  std::optional<bool> alu_eq = std::nullopt;
-  std::optional<bool> alu_ge = std::nullopt;
-
   if (ld_gpi) {
-    if (!alu_rhs) {
-      return absl::InvalidArgumentError("attempted to load undef gpi.");
-    }
-    alu_rhs = state().load_gpi(*alu_rhs);
+    rd_port_1 = state().load_gpi(rd_port_1);
   }
 
   if (flag_get) {
-    alu_rhs = state().flag() * 15;
+    rd_port_1 = state().flag() * 15;
   }
 
   if (mem_bank_set) {
-    auto id = f.ReadPort(0, state());
-    if (!id) {
-      return absl::InvalidArgumentError(
-          "attempted to set RAM bank without an index");
-    }
-    state().set_membank(*id);
+    state().set_membank(rd_port_0);
   }
 
   if (rom_bank_set) {
-    auto id = f.ReadPort(0, state());
-    if (!id) {
-      return absl::InvalidArgumentError(
-          "attempted to set ROM bank without an index");
-    }
-    state().set_rombank(*id);
+    state().set_rombank(rd_port_0);
   }
 
-  if ((alu_lhs || alu_zero_lhs) && (alu_rhs || alu_zero_rhs)) {
-    auto ret = Alu<4>::spec({alu_lhs.value_or(3), alu_rhs.value_or(4),
-                             alu_carry_in, alu_not_rhs, alu_and, alu_not,
-                             alu_shr, alu_zero_lhs, alu_zero_rhs});
+  auto ret =
+      Alu<4>::spec({rd_port_0, rd_port_1, f.imm, !alu_zero_lhs,
+                    alu_zero_rhs ? 0u : (alu_not_rhs ? 1u : 2u), f.imm_valid,
+                    alu_carry_in, alu_and, alu_not, alu_shr});
 
-    alu_res = ret[0];
-    alu_ge = ret[1];
-    alu_eq = ret[2];
-  }
+  uint4_t alu_res = ret[0];
+  bool alu_ge = ret[1];
+  bool alu_eq = ret[2];
 
   if (pop_reg) {
     alu_res = state().pop();
   }
 
   if (push_reg) {
-    if (!alu_res) {
-      return absl::InvalidArgumentError("attempted to push undef.");
-    }
-    state().push(*alu_res);
+    state().push(alu_res);
   }
 
   if (st_mem) {
-    if (!alu_res) {
-      return absl::InvalidArgumentError("attempted to store undef.");
-    }
-    auto addr = f.ReadPort(0, state());
-    if (!addr) {
-      return absl::InvalidArgumentError("attempted to store to undef.");
-    }
-    state().store(*addr, *alu_res);
+    state().store(rd_port_0, alu_res);
   }
 
   if (wait) {
-    if (!alu_eq) {
-      return absl::InvalidArgumentError("attempted to wait with invalid flag.");
-    }
     if (!f.test_bit_val) {
       return absl::InvalidArgumentError("testbit is undef.");
     }
-    if (*alu_eq == *f.test_bit_val) {
+    if (alu_eq == *f.test_bit_val) {
       state().set_pc(state().pc() + 1);
     }
   } else {
@@ -309,33 +258,18 @@ absl::Status Emulator::Op(
   }
 
   if (f.wa) {
-    if (!alu_res) {
-      return absl::InvalidArgumentError(
-          "attempted to write undef to register.");
-    }
-    state().write(*f.wa, *alu_res);
+    state().write(*f.wa, alu_res);
   }
 
   if (flag_set) {
-    if (!f.comparator) {
-      return absl::InvalidArgumentError(
-          "Attempted to set flags, but no comparator was set.");
-    }
-
-    switch (*f.comparator) {
+    switch (f.comparator) {
       case Comparator::kEq:
       case Comparator::kNe:
-        if (!alu_eq) {
-          return absl::InvalidArgumentError("ALU did not produce a flag.");
-        }
-        state().set_flag(*alu_eq == (*f.comparator == Comparator::kEq));
+        state().set_flag(alu_eq == (f.comparator == Comparator::kEq));
         break;
       case Comparator::kGe:
       case Comparator::kLt:
-        if (!alu_ge) {
-          return absl::InvalidArgumentError("ALU did not produce a flag.");
-        }
-        state().set_flag(*alu_ge == (*f.comparator == Comparator::kGe));
+        state().set_flag(alu_ge == (f.comparator == Comparator::kGe));
         break;
     }
   }

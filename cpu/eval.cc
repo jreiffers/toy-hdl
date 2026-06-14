@@ -8,6 +8,7 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -254,7 +255,7 @@ absl::Status VerifySpec(const GateNetwork& net,
     return absl::InvalidArgumentError("Too many input bits.");
   }
 
-  absl::flat_hash_map<GateTerminal, bool> vals;
+  absl::node_hash_map<GateTerminal, bool> vals;
 
   std::vector<std::string> errors;
   std::function<bool(uint32_t, GateTerminal)> get;
@@ -313,7 +314,9 @@ absl::Status VerifySpec(const GateNetwork& net,
             bool v = get(mask, gate.input(i));
             bool not_v = get(mask, gate.input(i + gate.num_inputs() / 2));
             if (v == not_v) {
-              errors.push_back("Inconsistent lookup gate inputs.");
+              errors.push_back(absl::StrCat(
+                  "Inconsistent lookup(", to_string(gate), ") gate input ", i,
+                  " at `", absl::StrJoin(gate.scope(), "/"), "`."));
             }
 
             if (get(mask, gate.input(i))) {

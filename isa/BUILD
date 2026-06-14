@@ -5,6 +5,9 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 cc_library(
     name = "isa_types",
     hdrs = ["isa_types.h"],
+    deps = [
+        "@abseil-cpp//absl/algorithm:container",
+    ],
 )
 
 cc_binary(
@@ -82,19 +85,20 @@ cc_library(
 
 genrule(
     name = "instructions_gen",
-    outs = ["instructions.cc"],
+    outs = ["instructions_gen.cc"],
     cmd = "$(location :isa) --mode=instrs > $@",
     tools = [":isa"],
 )
 
 cc_library(
     name = "instructions",
-    srcs = [":instructions_gen"],
+    srcs = [":instructions_gen", "instructions.cc"],
     hdrs = ["instructions.h"],
     deps = [
         ":isa_types",
         "@abseil-cpp//absl/types:span",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

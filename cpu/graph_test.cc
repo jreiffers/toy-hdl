@@ -58,12 +58,15 @@ TEST(GraphTest, TestAlu) {
   GateNetwork net;
 
   GateReg<1> cin = net.AddInput<1>();
-  GateReg<1> neg_b = net.AddInput<1>();
   GateReg<1> a = net.AddInput<1>();
   GateReg<1> b = net.AddInput<1>();
+  GateReg<1> c = net.AddInput<1>();
+  GateReg<1> a_enable = net.AddInput<1>();
+  GateReg<2> b_lut = net.AddInput<2>();
+  GateReg<1> c_enable = net.AddInput<1>();
 
-  Alu<1> alu = MakeAlu<1>(net, a, b, cin, neg_b, kLowGate, kLowGate, kLowGate,
-                          kLowGate, kLowGate);
+  Alu<1> alu = MakeAlu<1>(net, a, b, c, a_enable, b_lut, c_enable, cin,
+                          kLowGate, kLowGate, kLowGate);
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.res);
   net.DeclareOutput(alu.zero);
@@ -77,18 +80,23 @@ TEST(GraphTest, TestAlu) {
   graph::PostDominatorTree pdt(net, toposort);
   pdt.dump();
 
-  GateTerminal pick_mux = Find(net, "alu/pick_b/bit0", GateKind::kMux);
-  GateTerminal pick_not_b = Find(net, "alu/pick_b/bit0", GateKind::kNot,
-                                 [&](Gate& g) { return g.input(0) == b[0]; });
+  GateTerminal rhs_sel =
+      Find(net, "alu/rhs/bit0", GateKind::kMux,
+           [&](Gate& g) { return g.input(0) == c_enable[0]; });
+  GateTerminal rhs_mux = Find(net, "alu/rhs/bit0", GateKind::kMux,
+                              [&](Gate& g) { return g.input(0) == rhs_sel; });
+  GateTerminal rhs_not_sel =
+      Find(net, "alu/rhs/bit0", GateKind::kNot,
+           [&](Gate& g) { return g.input(0) == rhs_sel; });
   GateTerminal abc_nand = Find(net, "alu/adder/bit0/abc", GateKind::kNand);
 
   EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, a[0]));
   EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, b[0]));
-  EXPECT_FALSE(pdt.Check(/*dominator=*/pick_not_b, pick_mux));
-  EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, pick_not_b));
+  EXPECT_FALSE(pdt.Check(/*dominator=*/rhs_not_sel, rhs_mux));
+  EXPECT_FALSE(pdt.Check(/*dominator=*/carry_out, rhs_not_sel));
 
-  EXPECT_TRUE(pdt.Check(/*dominator=*/pick_mux, pick_not_b));
-  EXPECT_TRUE(pdt.Check(/*dominator=*/pick_mux, neg_b[0]));
+  EXPECT_TRUE(pdt.Check(/*dominator=*/rhs_mux, rhs_not_sel));
+  EXPECT_TRUE(pdt.Check(/*dominator=*/rhs_mux, b_lut[0]));
   EXPECT_TRUE(pdt.Check(/*dominator=*/carry_out, abc_nand));
 }
 
