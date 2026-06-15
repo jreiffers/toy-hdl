@@ -11,17 +11,16 @@
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
-#include "alu.h"
-#include "compiler.h"
-#include "export.h"
-#include "gate_lib.h"
-#include "pc_gen.h"
-#include "register_file.h"
-#include "transistor_lib.h"
+#include "cpu/alu.h"
+#include "cpu/compiler.h"
+#include "cpu/export.h"
+#include "cpu/gate_lib.h"
+#include "cpu/register_file.h"
+#include "cpu/transistor_lib.h"
 
-ABSL_FLAG(
-    std::string, module, "",
-    "The module to generate. One of alu, alu2, pcgen, register, register1");
+ABSL_FLAG(std::string, module, "",
+          "The module to generate. One of alu, alu1, alu2, pcgen, register, "
+          "register1, decoder, mux");
 ABSL_FLAG(std::string, format, "gnet",
           "The output to produce. gnet for the gate network, tnet for the "
           "transistor network, netlist for a serialized netlist. Netlist "
@@ -52,14 +51,6 @@ void BuildAlu(GateNetwork& net) {
   net.DeclareOutput(alu.res, "result");
   net.DeclareOutput(alu.carry_out, "cout");
   net.DeclareOutput(alu.zero, "zero");
-}
-
-void BuildPcGen(GateNetwork& net) {
-  auto current_pc = net.AddInput<10>();
-  auto do_jump = net.AddInput<1>();
-  auto jump_addr = net.AddInput<10>();
-  PcGen<10> pcgen = MakePcGen(net, current_pc, do_jump, jump_addr);
-  net.DeclareOutput(pcgen.next_pc);
 }
 
 template <int bw, int addrbits>
@@ -94,8 +85,6 @@ int main(int argc, char* argv[]) {
     BuildAlu<2>(net);
   } else if (mod == "alu1") {
     BuildAlu<1>(net);
-  } else if (mod == "pcgen") {
-    BuildPcGen(net);
   } else if (mod == "register") {
     BuildRegister<4, 2>(net);
   } else if (mod == "register1") {

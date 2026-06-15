@@ -41,7 +41,6 @@ class MachineState {
   virtual uint4_t pop() { return bak_; }
 
   virtual uint16_t pc() { return pc_; }
-  virtual void jump(uint6_t addr) { pc_ = (rombank << 6) | addr; }
   virtual void push_pc() {
     if (call_stack_.size() >= 4) {
       throw std::logic_error("Call stack overflow.");
@@ -57,7 +56,8 @@ class MachineState {
   }
 
   virtual void set_membank(uint4_t bank) { membank = bank; }
-  virtual void set_rombank(uint4_t bank) { rombank = bank; }
+  virtual void set_rombank(uint4_t bank) { rombank_ = bank; }
+  uint4_t rombank() const { return rombank_; }
   virtual bool flag() { return flag_; }
   virtual void set_flag(bool flag) { flag_ = flag; }
 
@@ -86,7 +86,7 @@ class MachineState {
   bool flag_ = false;
   std::deque<uint16_t> call_stack_;
   int membank = 0;
-  int rombank = 0;
+  int rombank_ = 0;
 };
 
 class Emulator : private InstructionVisitorWithSemantics<absl::Status> {

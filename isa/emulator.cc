@@ -13,32 +13,6 @@
 
 namespace isa {
 
-std::optional<int> GetReadPort(absl::Span<const FieldSemantics> field) {
-  for (auto f : field) {
-    if (f == FieldSemantics::kRegReadAddr0) return 0;
-    if (f == FieldSemantics::kRegReadAddr1) return 1;
-  }
-  return std::nullopt;
-}
-
-bool IsImmediate(absl::Span<const FieldSemantics> field) {
-  return absl::c_contains(field, FieldSemantics::kImmediate);
-}
-
-enum class AluInput {
-  kReadPort0,
-  kReadPort1,
-  kImm,
-  kFlag,
-};
-
-std::optional<AluInput> InferAluInput(absl::Span<const FieldSemantics> field) {
-  if (IsImmediate(field)) return AluInput::kImm;
-  auto rd_port = GetReadPort(field);
-  if (!rd_port) return std::nullopt;
-  return *rd_port == 0 ? AluInput::kReadPort0 : AluInput::kReadPort1;
-}
-
 struct ParsedFields {
   static absl::StatusOr<ParsedFields> Get(
       uint32_t instr, absl::Span<const uint32_t> args,
@@ -47,13 +21,6 @@ struct ParsedFields {
   case FieldSemantics::c:                                                    \
     if (target) return absl::InvalidArgumentError("Duplicate " #target "."); \
     target = static_cast<std::remove_cvref_t<decltype(*target)>>(args[i]);   \
-    break
-
-#define SET_ALU(c, target)                                                   \
-  case FieldSemantics::c:                                                    \
-    if (target) return absl::InvalidArgumentError("Duplicate " #target "."); \
-    target = InferAluInput(field_semantics[i]);                              \
-    if (!target) return absl::InvalidArgumentError("Invalid " #target ".");  \
     break
 
     ParsedFields ret;
@@ -65,15 +32,15 @@ struct ParsedFields {
     ret.imm_valid = false;
     ret.comparator = static_cast<Comparator>(
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kAluCmp)));
+    ret.jmp_addr = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kJumpAddr));
+    ret.test_bit_val = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kTestBitVal));
 
     for (int i = 0; i < args.size(); ++i) {
       for (auto f : field_semantics[i]) {
         switch (f) {
           SET(kPredication, ret.pred);
           SET(kRegWriteAddr, ret.wa);
-          SET(kTestBitVal, ret.test_bit_val);
           SET(kDerefSrc, ret.deref_src);
-          SET(kJumpAddr, ret.jmp_addr);
 
           case FieldSemantics::kImmediate:
             ret.imm_valid = true;
@@ -90,9 +57,9 @@ struct ParsedFields {
   uint4_t imm;
   bool imm_valid;
   Comparator comparator;
-  std::optional<bool> test_bit_val = std::nullopt;
+  bool test_bit_val;
   std::optional<bool> deref_src = std::nullopt;
-  std::optional<uint16_t> jmp_addr = std::nullopt;
+  uint16_t jmp_addr;
 };
 
 absl::Status Emulator::Op(
@@ -216,45 +183,44 @@ absl::Status Emulator::Op(
   if (pop_reg) {
     alu_res = state().pop();
   }
-
   if (push_reg) {
     state().push(alu_res);
   }
-
   if (st_mem) {
     state().store(rd_port_0, alu_res);
   }
-
-  if (wait) {
-    if (!f.test_bit_val) {
-      return absl::InvalidArgumentError("testbit is undef.");
-    }
-    if (alu_eq == *f.test_bit_val) {
-      state().set_pc(state().pc() + 1);
-    }
-  } else {
-    state().set_pc(state().pc() + 1);
-  }
-
   if (push_pc) {
     state().push_pc();
   }
-
-  if (jump) {
-    if (indirect) {
-      state().jump(state().read(3) << 2);
-    } else {
-      if (!f.jmp_addr) {
-        return absl::InvalidArgumentError(
-            "attempted jump without defined target.");
-      }
-
-      state().jump(*f.jmp_addr);
-    }
-  }
-
   if (pop_pc) {
     state().pop_pc();
+  }
+
+  {
+    bool next_instruction = !wait || (alu_eq == f.test_bit_val);
+    // a = current PC
+    // b = direct jump addr
+    // c = indirect jump addr
+    uint32_t pc = state().pc();
+    uint32_t b_lut = jump ? 2 : 0;
+    uint32_t ja = f.jmp_addr;
+    bool carry_in = next_instruction && !jump;
+    bool a_enable = !jump;
+    bool c_enable = indirect;
+    uint4_t rb = state().rombank();
+
+    std::array<uint32_t, 10> alu_vals_0 {pc & 0b11, ja & 0b11, 0,
+       a_enable, b_lut, c_enable, carry_in, false, false, false};
+    uint32_t next_pc_0 = Alu<4>::spec(alu_vals_0)[0];
+    std::array<uint32_t, 10> alu_vals_1 {(pc >> 2) & 0b1111, ja >> 2, rd_port_1,
+       a_enable, b_lut, c_enable, (next_pc_0 >> 2) & 1, false, false, false};
+    uint32_t next_pc_1 = Alu<4>::spec(alu_vals_1)[0];
+    bool next_pc_carry = Alu<4>::spec(alu_vals_1)[1];
+    std::array<uint32_t, 10> alu_vals_2 {(pc >> 6) & 0b1111, 0, rb,
+       a_enable, b_lut, true, next_pc_carry, false, false, false};
+    uint32_t next_pc_2 = Alu<4>::spec(alu_vals_2)[0];
+
+    state().set_pc((next_pc_2 << 6) | (next_pc_1 << 2) | (next_pc_0 & 0b11));
   }
 
   if (f.wa) {

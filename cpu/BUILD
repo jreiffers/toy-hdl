@@ -59,8 +59,10 @@ cc_test(
 
 cc_library(
     name = "cpu_modules",
-    hdrs = ["alu.h", "pc_gen.h", "register_file.h"],
-    deps = [":gate_lib"],
+    hdrs = ["alu.h", "register_file.h"],
+    deps = [
+        ":gate_lib",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -146,21 +148,6 @@ cc_library(
 cc_test(
     name = "alu_test",
     srcs = ["alu_test.cc"],
-    deps = [
-        ":cpu_modules",
-        ":eval",
-        ":gate_opt",
-        ":lower_gates",
-        ":compiler",
-        "@googletest//:gtest_main",
-        "@abseil-cpp//absl/status:status_matchers",
-    ],
-)
-
-
-cc_test(
-    name = "pcgen_test",
-    srcs = ["pcgen_test.cc"],
     deps = [
         ":cpu_modules",
         ":eval",
