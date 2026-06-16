@@ -28,32 +28,42 @@ struct ParsedFields {
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegReadAddr0));
     ret.ra1 =
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegReadAddr1));
+    ret.wa = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegWriteAddr));
     ret.imm = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kImmediate));
-    ret.imm_valid = false;
     ret.comparator = static_cast<Comparator>(
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kAluCmp)));
-    ret.jmp_addr = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kJumpAddr));
-    ret.test_bit_val = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kTestBitVal));
+    ret.jmp_addr =
+        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kJumpAddr));
+    ret.test_bit_val =
+        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kTestBitVal));
+    ret.pred =
+        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kPredication));
+
+    ret.imm_valid = false;
+    ret.write_enable = false;
 
     for (int i = 0; i < args.size(); ++i) {
       for (auto f : field_semantics[i]) {
         switch (f) {
-          SET(kPredication, ret.pred);
-          SET(kRegWriteAddr, ret.wa);
           SET(kDerefSrc, ret.deref_src);
 
+          case FieldSemantics::kRegWriteAddr:
+            ret.write_enable = true;
+            break;
           case FieldSemantics::kImmediate:
             ret.imm_valid = true;
+            break;
         }
       }
     }
     return ret;
   }
 
-  std::optional<bool> pred = std::nullopt;
+  bool pred;
   int ra0;
   int ra1;
-  std::optional<int> wa = std::nullopt;
+  int wa;
+  bool write_enable;
   uint4_t imm;
   bool imm_valid;
   Comparator comparator;
@@ -135,14 +145,7 @@ absl::Status Emulator::Op(
     }
   }
 
-  if (!f.pred) {
-    return absl::InvalidArgumentError("Did not get a pred flag.");
-  }
-
-  if (*f.pred && !state().flag()) {
-    state().set_pc(state().pc() + 1);
-    return absl::OkStatus();
-  }
+  bool pred_mismatch = f.pred && !state().flag();
 
   uint4_t rd_port_0 = state().read(f.ra0);
   uint4_t rd_port_1 = state().read(f.ra1);
@@ -163,14 +166,6 @@ absl::Status Emulator::Op(
     rd_port_1 = state().flag() * 15;
   }
 
-  if (mem_bank_set) {
-    state().set_membank(rd_port_0);
-  }
-
-  if (rom_bank_set) {
-    state().set_rombank(rd_port_0);
-  }
-
   auto ret =
       Alu<4>::spec({rd_port_0, rd_port_1, f.imm, !alu_zero_lhs,
                     alu_zero_rhs ? 0u : (alu_not_rhs ? 1u : 2u), f.imm_valid,
@@ -180,20 +175,14 @@ absl::Status Emulator::Op(
   bool alu_ge = ret[1];
   bool alu_eq = ret[2];
 
-  if (pop_reg) {
-    alu_res = state().pop();
-  }
-  if (push_reg) {
-    state().push(alu_res);
-  }
-  if (st_mem) {
-    state().store(rd_port_0, alu_res);
-  }
-  if (push_pc) {
-    state().push_pc();
-  }
-  if (pop_pc) {
-    state().pop_pc();
+  if (!pred_mismatch) {
+    if (mem_bank_set) state().set_membank(rd_port_0);
+    if (rom_bank_set) state().set_rombank(rd_port_0);
+    if (pop_reg) alu_res = state().pop();
+    if (push_reg) state().push(alu_res);
+    if (st_mem) state().store(rd_port_0, alu_res);
+    if (push_pc) state().push_pc();
+    if (pop_pc) state().pop_pc();
   }
 
   {
@@ -202,32 +191,33 @@ absl::Status Emulator::Op(
     // b = direct jump addr
     // c = indirect jump addr
     uint32_t pc = state().pc();
-    uint32_t b_lut = jump ? 2 : 0;
+    uint32_t b_lut = jump && !pred_mismatch ? 2 : 0;
     uint32_t ja = f.jmp_addr;
-    bool carry_in = next_instruction && !jump;
-    bool a_enable = !jump;
+    bool carry_in = pred_mismatch || (next_instruction && !jump);
+    bool a_enable = pred_mismatch || !jump;
     bool c_enable = indirect;
     uint4_t rb = state().rombank();
 
-    std::array<uint32_t, 10> alu_vals_0 {pc & 0b11, ja & 0b11, 0,
-       a_enable, b_lut, c_enable, carry_in, false, false, false};
+    std::array<uint32_t, 10> alu_vals_0{
+        pc & 0b11, ja & 0b11, 0,     a_enable, b_lut,
+        c_enable,  carry_in,  false, false,    false};
     uint32_t next_pc_0 = Alu<4>::spec(alu_vals_0)[0];
-    std::array<uint32_t, 10> alu_vals_1 {(pc >> 2) & 0b1111, ja >> 2, rd_port_1,
-       a_enable, b_lut, c_enable, (next_pc_0 >> 2) & 1, false, false, false};
+    std::array<uint32_t, 10> alu_vals_1{
+        (pc >> 2) & 0b1111,   ja >> 2, rd_port_1, a_enable, b_lut, c_enable,
+        (next_pc_0 >> 2) & 1, false,   false,     false};
     uint32_t next_pc_1 = Alu<4>::spec(alu_vals_1)[0];
     bool next_pc_carry = Alu<4>::spec(alu_vals_1)[1];
-    std::array<uint32_t, 10> alu_vals_2 {(pc >> 6) & 0b1111, 0, rb,
-       a_enable, b_lut, true, next_pc_carry, false, false, false};
+    std::array<uint32_t, 10> alu_vals_2{
+        (pc >> 6) & 0b1111, 0,     rb,    a_enable, b_lut, true,
+        next_pc_carry,      false, false, false};
     uint32_t next_pc_2 = Alu<4>::spec(alu_vals_2)[0];
 
     state().set_pc((next_pc_2 << 6) | (next_pc_1 << 2) | (next_pc_0 & 0b11));
   }
 
-  if (f.wa) {
-    state().write(*f.wa, alu_res);
-  }
+  state().write(f.wa, (!pred_mismatch && f.write_enable) ? alu_res : rd_port_0);
 
-  if (flag_set) {
+  if (flag_set && !pred_mismatch) {
     switch (f.comparator) {
       case Comparator::kEq:
       case Comparator::kNe:
