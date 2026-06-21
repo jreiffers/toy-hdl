@@ -19,6 +19,21 @@ pip.parse(
 
 use_repo(pip, "pip_deps")
 
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "reflect_cpp",
+    build_file_content = """
+cc_library(
+    name = "reflect_cpp",
+    hdrs = glob(["include/**/*.hpp", "include/**/*.h"]),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+""",
+    strip_prefix = "reflect-cpp-0.25.0",
+    urls = ["https://github.com/getml/reflect-cpp/archive/refs/tags/v0.25.0.tar.gz"],
+)
 
 # googletest 1.17.0 does not support bazel 9.0.
 #git_override(

@@ -4,12 +4,14 @@
 #include <array>
 #include <deque>
 #include <sstream>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "rfl.hpp"
 
 enum class GateKind {
   kDead,
@@ -97,6 +99,8 @@ std::string to_string(GateTerminal t);
 
 template <int bw>
 struct GateReg {
+  static constexpr int bitwidth = bw;
+
   std::array<GateTerminal, bw> vals;
 
   GateReg() {}
@@ -115,6 +119,13 @@ struct GateReg {
     return vals[0];
   }
 };
+
+template <typename T>
+inline constexpr bool is_gate_reg = false;
+template <int bw>
+inline constexpr bool is_gate_reg<GateReg<bw>> = true;
+template <typename T>
+concept IsGateReg = is_gate_reg<std::remove_cvref_t<T>>;
 
 struct DynGateReg {
  public:
@@ -150,6 +161,17 @@ struct GateNetwork {
   GateTerminal input_bit(int i) const { return {nullptr, i}; }
 
   void DeclareOutput(const DynGateReg& reg, std::string label = "");
+  template <typename T>
+  void DeclareOutputs(const T& s, std::string prefix = "") {
+    if constexpr (IsGateReg<T>) {
+      DeclareOutput(s, prefix);
+    } else {
+      rfl::to_view(s).apply([&](const auto& field) {
+        std::string_view sep = prefix.empty() ? "" : "/";
+        DeclareOutputs(*field.value(), absl::StrCat(prefix, sep, field.name()));
+      });
+    }
+  }
   DynGateReg GetOutput(int index);
 
   DynGateReg GetInput(int index) const {
@@ -182,6 +204,22 @@ struct GateNetwork {
     input_offsets_.push_back(input_offsets_.back() + bw);
     input_bitwidths_.push_back(bw);
     return result;
+  }
+
+  template <typename T>
+  T AddInputs(std::string prefix = "") {
+    if constexpr (IsGateReg<T>) {
+      return AddInput<std::remove_cvref_t<T>::bitwidth>(prefix);
+    } else {
+      T out;
+      rfl::to_view(out).apply([&](auto& field) {
+        std::string_view sep = prefix.empty() ? "" : "/";
+        std::string new_prefix = absl::StrCat(prefix, sep, field.name());
+        using FieldT = std::remove_cvref_t<decltype(*field.value())>;
+        *field.value() = AddInputs<FieldT>(new_prefix);
+      });
+      return out;
+    }
   }
 
   Gate& AddGate(GateKind kind,
@@ -269,6 +307,13 @@ struct GateNetwork {
     for (int i = 0; i < total_input_bits(); ++i) {
       ret.push_back(input_bit(i));
     }
+    return ret;
+  }
+
+  template <typename T>
+  T Build() {
+    T ret = T::Build(*this, AddInputs<typename T::Args>());
+    DeclareOutputs(ret);
     return ret;
   }
 

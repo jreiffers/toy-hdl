@@ -272,6 +272,7 @@ absl::Status VerifySpec(const GateNetwork& net,
     }
 
     auto [it, inserted] = vals.try_emplace(t, false);
+    auto& result = it->second;
     if (inserted) {
       auto& gate = *t.first;
       bool r;
@@ -280,7 +281,7 @@ absl::Status VerifySpec(const GateNetwork& net,
           assert(false);
           break;
         case GateKind::kNot:
-          it->second = !get(mask, gate.input(0));
+          result = !get(mask, gate.input(0));
           break;
         case GateKind::kTriStateBuffer:
           assert(false);  // TODO support this
@@ -290,7 +291,7 @@ absl::Status VerifySpec(const GateNetwork& net,
           for (int i = 0; r && i < gate.num_inputs(); ++i) {
             r &= get(mask, gate.input(i));
           }
-          it->second = !r;
+          result = !r;
           break;
         case GateKind::kMux: {
           bool c = get(mask, gate.input(0));
@@ -298,7 +299,7 @@ absl::Status VerifySpec(const GateNetwork& net,
           if (c == not_c) {
             errors.push_back("Inconsistent mux gate inputs.");
           }
-          it->second = get(mask, c ? gate.input(2) : gate.input(3));
+          result = get(mask, c ? gate.input(2) : gate.input(3));
           break;
         }
         case GateKind::kNor:
@@ -306,7 +307,7 @@ absl::Status VerifySpec(const GateNetwork& net,
           for (int i = 0; !r && i < gate.num_inputs(); ++i) {
             r |= get(mask, gate.input(i));
           }
-          it->second = !r;
+          result = !r;
           break;
         case GateKind::kLookup:
           uint64_t p = 0;
@@ -323,11 +324,11 @@ absl::Status VerifySpec(const GateNetwork& net,
               p |= 1 << i;
             }
           }
-          it->second = (gate.lookup_data() >> p) & 1;
+          result = (gate.lookup_data() >> p) & 1;
           break;
       }
     }
-    return it->second;
+    return result;
   };
 
   auto encode_regs = [&](uint32_t mask, absl::Span<const DynGateReg> regs) {

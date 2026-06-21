@@ -31,28 +31,6 @@ ABSL_FLAG(std::string, output, "",
 ABSL_FLAG(bool, avoid_transmission_gates, true,
           "If set, do not emit transmission gates.");
 
-template <int bw>
-void BuildAlu(GateNetwork& net) {
-  auto a = net.AddInput<bw>("a");
-  auto b = net.AddInput<bw>("b");
-  auto c = net.AddInput<bw>("c");
-
-  auto a_enable = net.AddInput<1>("a_enable");
-  auto b_lut = net.AddInput<2>("b_lut");
-  auto c_enable = net.AddInput<1>("c_enable");
-
-  auto carry_in = net.AddInput<1>("cin");
-  auto compute_and = net.AddInput<1>("and");
-  auto not_out = net.AddInput<1>("not_out");
-  auto shr = net.AddInput<1>("shr");
-
-  Alu<bw> alu = MakeAlu<bw>(net, a, b, c, a_enable, b_lut, c_enable, carry_in,
-                            compute_and, not_out, shr);
-  net.DeclareOutput(alu.res, "result");
-  net.DeclareOutput(alu.carry_out, "cout");
-  net.DeclareOutput(alu.zero, "zero");
-}
-
 template <int bw, int addrbits>
 void BuildRegister(GateNetwork& net) {
   auto reset = net.AddInput<1>("reset");
@@ -80,11 +58,11 @@ int main(int argc, char* argv[]) {
 
   std::string mod = absl::GetFlag(FLAGS_module);
   if (mod == "alu") {
-    BuildAlu<4>(net);
+    net.Build<Alu<4>>();
   } else if (mod == "alu2") {
-    BuildAlu<2>(net);
+    net.Build<Alu<2>>();
   } else if (mod == "alu1") {
-    BuildAlu<1>(net);
+    net.Build<Alu<1>>();
   } else if (mod == "register") {
     BuildRegister<4, 2>(net);
   } else if (mod == "register1") {

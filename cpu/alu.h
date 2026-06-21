@@ -47,66 +47,77 @@ struct Alu {
 
     return {res & mask, res > mask, !(res & mask)};
   }
+
+  struct Args {
+    GateReg<bw> a;
+    GateReg<bw> b;
+    GateReg<bw> c;
+
+    GateReg<1> a_enable;
+    GateReg<2> b_lut;
+    GateReg<1> c_enable;
+
+    GateReg<1> carry_in;
+    GateReg<1> compute_and;
+    GateReg<1> not_out;
+    GateReg<1> shr;
+  };
+
+  static Alu Build(GateNetwork& net, const Args& a) {
+    ScopeGuard scope(net, "alu");
+    GateReg<bw> rhs;
+    {
+      ScopeGuard pick(net, "rhs");
+      for (int i = 0; i < bw; ++i) {
+        ScopeGuard bit(net, absl::StrCat("bit", i));
+        rhs[i] = net.Mux(net.Mux(a.c_enable, a.c[i], a.b[i]), a.b_lut[1],
+                         a.b_lut[0]);
+      }
+    }
+
+    GateReg<bw> lhs;
+    {
+      ScopeGuard pick(net, "lhs");
+      for (int i = 0; i < bw; ++i) {
+        ScopeGuard bit(net, absl::StrCat("bit", i));
+        lhs[i] = net.And(a.a[i], a.a_enable);
+      }
+    }
+
+    GateReg<bw> sum;
+    GateReg<bw> and_;
+    GateReg<1> carry_out;
+
+    std::tie(sum, carry_out[0]) = MakeAdder(net, lhs, rhs, a.carry_in[0]);
+
+    for (int i = 0; i < bw; ++i) {
+      ScopeGuard s1(net, "and");
+      ScopeGuard s2(net, absl::StrCat("bit", i));
+      and_[i] = net.And(lhs[i], rhs[i]);
+    }
+
+    // Carry out should never be used when shr / compute_and is active.
+    // TODO: remove the parts that are unnecessary.
+    Alu alu;
+    alu.carry_out =
+        net.Xor(net.And(carry_out, net.Not(a.compute_and)), a.not_out[0]);
+    auto and_or_sum = net.Mux(a.compute_and, and_, sum);
+
+    for (int i = 0; i < bw; ++i) {
+      alu.res[i] = net.Xor(and_or_sum[i], a.not_out[0]);
+    }
+
+    for (int i = 0; i < bw; ++i) {
+      GateTerminal hi_bit = i == bw - 1 ? alu.carry_out[0] : alu.res[i + 1];
+      alu.res[i] = net.Mux(a.shr[0], hi_bit, alu.res[i]);
+    }
+
+    alu.carry_out = net.And(alu.carry_out, net.Not(a.shr));
+
+    ScopeGuard zero(net, "is_zero");
+    alu.zero[0] = net.Nor(alu.res.vals);
+    return alu;
+  }
 };
-
-template <int bw>
-Alu<bw> MakeAlu(GateNetwork& net, GateReg<bw> a, GateReg<bw> b, GateReg<bw> c,
-                GateReg<1> a_enable, GateReg<2> b_lut, GateReg<1> c_enable,
-
-                GateReg<1> carry_in, GateReg<1> compute_and, GateReg<1> not_out,
-                GateReg<1> shr) {
-  ScopeGuard scope(net, "alu");
-  GateReg<bw> rhs;
-  {
-    ScopeGuard pick(net, "rhs");
-    for (int i = 0; i < bw; ++i) {
-      ScopeGuard bit(net, absl::StrCat("bit", i));
-      rhs[i] = net.Mux(net.Mux(c_enable, c[i], b[i]), b_lut[1], b_lut[0]);
-    }
-  }
-
-  GateReg<bw> lhs;
-  {
-    ScopeGuard pick(net, "lhs");
-    for (int i = 0; i < bw; ++i) {
-      ScopeGuard bit(net, absl::StrCat("bit", i));
-      lhs[i] = net.And(a[i], a_enable);
-    }
-  }
-
-  Alu<bw> alu;
-
-  GateReg<bw> sum;
-  GateReg<bw> and_;
-  GateReg<1> carry_out;
-
-  std::tie(sum, carry_out[0]) = MakeAdder(net, lhs, rhs, carry_in[0]);
-
-  for (int i = 0; i < bw; ++i) {
-    ScopeGuard s1(net, "and");
-    ScopeGuard s2(net, absl::StrCat("bit", i));
-    and_[i] = net.And(lhs[i], rhs[i]);
-  }
-
-  // Carry out should never be used when shr / compute_and is active.
-  // TODO: remove the parts that are unnecessary.
-  alu.carry_out = net.Xor(net.And(carry_out, net.Not(compute_and)), not_out[0]);
-  auto and_or_sum = net.Mux(compute_and, and_, sum);
-
-  for (int i = 0; i < bw; ++i) {
-    alu.res[i] = net.Xor(and_or_sum[i], not_out[0]);
-  }
-
-  for (int i = 0; i < bw; ++i) {
-    GateTerminal hi_bit = i == bw - 1 ? alu.carry_out[0] : alu.res[i + 1];
-    alu.res[i] = net.Mux(shr[0], hi_bit, alu.res[i]);
-  }
-
-  alu.carry_out = net.And(alu.carry_out, net.Not(shr));
-
-  ScopeGuard zero(net, "is_zero");
-  alu.zero[0] = net.Nor(alu.res.vals);
-  return alu;
-}
 
 #endif

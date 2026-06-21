@@ -21,22 +21,7 @@ int CountLiveGates(GateNetwork& net) {
 
 TEST(AluTest, TestSpec) {
   GateNetwork net;
-  auto a = net.AddInput<2>();
-  auto b = net.AddInput<2>();
-  auto c = net.AddInput<2>();
-  auto a_enable = net.AddInput<1>();
-  auto b_lut = net.AddInput<2>();
-  auto c_enable = net.AddInput<1>();
-  auto carry_in = net.AddInput<1>();
-  auto compute_and = net.AddInput<1>();
-  auto not_out = net.AddInput<1>();
-  auto shr = net.AddInput<1>();
-  Alu<2> alu = MakeAlu<2>(net, a, b, c, a_enable, b_lut, c_enable, carry_in,
-                          compute_and, not_out, shr);
-  net.DeclareOutput(alu.res);
-  net.DeclareOutput(alu.carry_out);
-  net.DeclareOutput(alu.zero);
-
+  auto alu = net.Build<Alu<2>>();
   RunGateOptPipeline(net, FoldGatesOpts{.lower_mux = true});
 
   ABSL_EXPECT_OK(

@@ -42,6 +42,7 @@ cc_library(
     deps = [
       "@abseil-cpp//absl/container:inlined_vector",
       "@abseil-cpp//absl/strings",
+      "@reflect_cpp//:reflect_cpp",
     ],
 )
 
