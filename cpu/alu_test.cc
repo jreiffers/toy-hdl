@@ -24,9 +24,8 @@ TEST(AluTest, TestSpec) {
   net.Build<Alu<2>>();
   RunGateOptPipeline(net, FoldGatesOpts{.lower_mux = true});
 
-  ABSL_EXPECT_OK(VerifySpec(net, net.GetOutputs(), Alu<2>::spec));
+  ABSL_EXPECT_OK(VerifySpec<Alu<2>>(net));
 
   auto transistor_net = Compile(net);
-  ABSL_EXPECT_OK(
-      VerifySpec(transistor_net, transistor_net.outputs(), Alu<2>::spec));
+  ABSL_EXPECT_OK(VerifySpec<Alu<2>>(transistor_net));
 }

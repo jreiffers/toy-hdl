@@ -17,6 +17,8 @@
 #include "cpu/export.h"
 #include "cpu/gate_lib.h"
 #include "cpu/transistor_lib.h"
+#include "cpu/types.h"
+#include "cpu/util.h"
 
 enum class PinState {
   kUndefined,  // The pin is floating.
@@ -54,6 +56,23 @@ absl::Status VerifySpec(const GateNetwork& net,
                         absl::Span<const DynGateReg> outputs,
                         const std::function<absl::InlinedVector<uint32_t, 4>(
                             absl::Span<const uint32_t> inputs)>& spec);
+
+template <typename T>
+absl::Status VerifySpec(GateNetwork& net) {
+  return VerifySpec(
+      net, net.GetOutputs(), [&](absl::Span<const uint32_t> inputs) {
+        return Flatten(
+            T::spec(Unflatten<typename T::template Args<Integer>>(inputs)));
+      });
+}
+
+template <typename T>
+absl::Status VerifySpec(const Network& net) {
+  return VerifySpec(net, net.outputs(), [&](absl::Span<const uint32_t> inputs) {
+    return Flatten(
+        T::spec(Unflatten<typename T::template Args<Integer>>(inputs)));
+  });
+}
 
 // Propagates the values of `inputs` through the network and updates `state`.
 enum class GateTerminalState { kLow, kHigh, kZ };

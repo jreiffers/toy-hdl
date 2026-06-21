@@ -22,6 +22,15 @@ py_binary(
 )
 
 py_binary(
+    name = "test",
+    srcs = ["test.py"],
+    deps = [
+        "@pip_deps//skidl",
+    ],
+    imports = ["."],
+)
+
+py_binary(
     name = "export_breadboard",
     srcs = ["export_breadboard.py"],
     deps = [

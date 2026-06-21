@@ -312,8 +312,8 @@ struct GateNetwork {
   }
 
   template <typename T>
-  T Build() {
-    T ret = T::Build(*this, AddInputs<typename T::Args>());
+  typename T::template Outs<GateReg> Build() {
+    auto ret = T::Build(*this, AddInputs<typename T::template Args<GateReg>>());
     DeclareOutputs(ret);
     return ret;
   }

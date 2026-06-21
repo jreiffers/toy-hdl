@@ -15,9 +15,11 @@ cc_library(
     srcs = ["eval.cc"],
     hdrs = ["eval.h"],
     deps = [
+      ":export",
       ":gate_lib",
       ":transistor_lib",
-      ":export",
+      ":types",
+      ":util",
       "@abseil-cpp//absl/algorithm:container",
       "@abseil-cpp//absl/container:flat_hash_set",
       "@abseil-cpp//absl/container:flat_hash_map",
@@ -63,6 +65,7 @@ cc_library(
     hdrs = ["alu.h", "register_file.h", "decoder.h"],
     deps = [
         ":gate_lib",
+        ":types",
         "//isa:instructions",
         "@abseil-cpp//absl/container:linked_hash_map",
     ],
@@ -240,6 +243,22 @@ cc_library(
         "@abseil-cpp//absl/container:node_hash_map",
         "@abseil-cpp//absl/container:flat_hash_map",
     ],
+)
+
+cc_library(
+    name = "types",
+    hdrs = ["types.h"]
+)
+
+cc_library(
+    name = "util",
+    hdrs = ["util.h"],
+    deps = [
+      ":types",
+      "@reflect_cpp//:reflect_cpp",
+      "@abseil-cpp//absl/container:inlined_vector",
+      "@abseil-cpp//absl/types:span",
+    ]
 )
 
 cc_test(

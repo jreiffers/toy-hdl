@@ -1,35 +1,46 @@
 #ifndef ALU_H__
 #define ALU_H__
 
-#include "gate_lib.h"
+#include "cpu/gate_lib.h"
+#include "cpu/types.h"
 
+template <template <int> class Ty>
 struct AluFlags {
-  GateReg<1> a_enable;
-  GateReg<2> b_lut;
-  GateReg<1> c_enable;
+  Ty<1> a_enable;
+  Ty<2> b_lut;
+  Ty<1> c_enable;
 
-  GateReg<1> carry_in;
-  GateReg<1> compute_and;
-  GateReg<1> not_out;
-  GateReg<1> shr;
+  Ty<1> carry_in;
+  Ty<1> compute_and;
+  Ty<1> not_out;
+  Ty<1> shr;
 };
 
 template <int bw>
 struct Alu {
-  GateReg<bw> res;
-  GateReg<1> carry_out;
-  GateReg<1> zero;
+  template <template <int> class Ty>
+  struct Outs {
+    Ty<bw> res;
+    Ty<1> carry_out;
+    Ty<1> zero;
+  };
 
-  static absl::InlinedVector<uint32_t, 4> spec(
-      absl::Span<const uint32_t> inputs) {
-    constexpr uint32_t mask = ((1ull << bw) - 1);
-    constexpr uint32_t wmask = mask | (1ull << bw);
+  template <template <int> class Ty>
+  struct Args {
+    Ty<bw> a;
+    Ty<bw> b;
+    Ty<bw> c;
+    AluFlags<Ty> flags;
+  };
 
-    uint32_t lhs = inputs[3] ? inputs[0] : 0;
-    uint32_t rhs = 0;
+  static Outs<Integer> spec(Args<Integer> args) {
+    const auto& flags = args.flags;
 
-    uint32_t b = inputs[5] ? inputs[2] : inputs[1];
-    switch (inputs[4]) {
+    Integer<bw> lhs = flags.a_enable.value() ? args.a : 0;
+    Integer<bw> rhs = 0;
+
+    Integer<bw> b = flags.c_enable.value() ? args.c : args.b;
+    switch (flags.b_lut.value()) {
       case 0:
         rhs = 0;
         break;
@@ -40,35 +51,23 @@ struct Alu {
         rhs = b;
         break;
       case 3:
-        rhs = mask;
+        rhs = ~rhs;
         break;
     }
-    rhs &= mask;
 
-    uint32_t cin = inputs[6];
-    bool compute_and = inputs[7];
-    bool not_out = inputs[8];
-    bool shr = inputs[9];
+    Integer<bw + 1> res(flags.compute_and.value() ? (lhs & rhs).value()
+                                                  : (lhs.value() + rhs.value() +
+                                                     flags.carry_in.value()));
+    if (flags.not_out.value()) res = ~res;
+    res = res >> flags.shr.value();
 
-    uint32_t res = compute_and ? (lhs & rhs) : (lhs + rhs + cin);
-    if (not_out) res = res ^ wmask;
-    if (shr) {
-      res >>= 1;
-    }
-
-    return {res & mask, res > mask, !(res & mask)};
+    auto val = res.template Slice<0, bw>();
+    return {val, res[bw], val == 0};
   }
 
-  struct Args {
-    GateReg<bw> a;
-    GateReg<bw> b;
-    GateReg<bw> c;
-    AluFlags flags;
-  };
-
-  static Alu Build(GateNetwork& net, const Args& a) {
+  static Outs<GateReg> Build(GateNetwork& net, const Args<GateReg>& a) {
     ScopeGuard scope(net, "alu");
-    const AluFlags& f = a.flags;
+    const auto& f = a.flags;
     GateReg<bw> rhs;
     {
       ScopeGuard pick(net, "rhs");
@@ -102,7 +101,7 @@ struct Alu {
 
     // Carry out should never be used when shr / compute_and is active.
     // TODO: remove the parts that are unnecessary.
-    Alu alu;
+    Outs<GateReg> alu;
     alu.carry_out =
         net.Xor(net.And(carry_out, net.Not(f.compute_and)), f.not_out[0]);
     auto and_or_sum = net.Mux(f.compute_and, and_, sum);

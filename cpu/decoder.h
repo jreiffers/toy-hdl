@@ -4,6 +4,7 @@
 #include "absl/container/linked_hash_map.h"
 #include "cpu/alu.h"
 #include "cpu/gate_lib.h"
+#include "cpu/types.h"
 #include "isa/instructions.h"
 
 namespace detail {
@@ -22,18 +23,26 @@ void ExtractBits(uint32_t mask, GateReg<bwin> in, GateReg<bwout>& out) {
 }  // namespace detail
 
 struct Decoder {
-  GateReg<1> write_enable;
-  GateReg<2> cmp;
-  GateReg<1> no_jump;
-  GateReg<1> indirect;
-  AluFlags alu_flags;
+  template <template <int> class Ty>
+  struct Outs {
+    Ty<1> write_enable;
+    Ty<2> cmp;
+    Ty<1> no_jump;
+    Ty<1> indirect;
+    AluFlags<Ty> alu_flags;
+  };
 
-  static absl::InlinedVector<uint32_t, 4> spec(
-      absl::Span<const uint32_t> inputs) {
+  template <template <int> class Ty>
+  struct Args {
+    Ty<11> instruction;
+    Ty<1> pred_mismatch;
+  };
+
+  static Outs<Integer> spec(Args<Integer> args) {
     using namespace isa;
 
-    uint32_t bits = inputs[0];
-    bool pred_mismatch = inputs[1];
+    uint32_t bits = args.instruction.value();
+    bool pred_mismatch = args.pred_mismatch.value();
 
     const Instruction* it = nullptr;
     for (const auto& instr : isa::GetInstructions()) {
@@ -53,31 +62,26 @@ struct Decoder {
                          ? 0
                          : (it->Has(InstrSemantics::kAluNotRhs) ? 1 : 2);
 
+    AluFlags<Integer> flags{!it->Has(InstrSemantics::kAluZeroLhs),
+                            b_lut,
+                            it->Has(FieldSemantics::kImmediate),
+                            it->Has(InstrSemantics::kAluCarryIn),
+                            it->Has(InstrSemantics::kAluAnd),
+                            it->Has(InstrSemantics::kAluNot),
+                            it->Has(InstrSemantics::kAluShr)};
+
     return {!pred_mismatch &&
                 it->Has(FieldSemantics::kRegWriteAddr) /*write_enable*/,
-            cmp,
-            pred_mismatch || !it->Has(InstrSemantics::kJump) /*no_jump*/,
-            it->Has(InstrSemantics::kIndirect),
-            !it->Has(InstrSemantics::kAluZeroLhs),
-            b_lut,
-            it->Has(FieldSemantics::kImmediate),
-            it->Has(InstrSemantics::kAluCarryIn),
-            it->Has(InstrSemantics::kAluAnd),
-            it->Has(InstrSemantics::kAluNot),
-            it->Has(InstrSemantics::kAluShr)};
+            cmp, pred_mismatch || !it->Has(InstrSemantics::kJump) /*no_jump*/,
+            it->Has(InstrSemantics::kIndirect), flags};
   }
 
-  struct Args {
-    GateReg<11> instruction;
-    GateReg<1> pred_mismatch;
-  };
-
-  static Decoder Build(GateNetwork& net, const Args& a) {
+  static Outs<GateReg> Build(GateNetwork& net, const Args<GateReg>& a) {
     using namespace detail;
     using namespace isa;
 
     ScopeGuard scope(net, "decoder");
-    Decoder decoder;
+    Outs<GateReg> decoder;
 
     auto pred_match = net.Not(a.pred_mismatch);
 

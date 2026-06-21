@@ -6,6 +6,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "cpu/types.h"
 #include "isa/visitor.h"
 
 namespace isa {
@@ -17,6 +18,7 @@ struct uintn_t {
   uintn_t() : val(0) {}
   uintn_t(uint32_t v) : val(v & ((1 << n) - 1)) {}
   operator uint32_t() const { return val; }
+  operator Integer<n>() const { return {val}; }
 };
 
 using uint2_t = uintn_t<2>;
