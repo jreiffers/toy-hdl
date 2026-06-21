@@ -109,6 +109,8 @@ struct Instruction {
     return false;
   }
 
+  bool Has(FieldSemantics sem) const { return HasField(sem); }
+
   bool Has(InstrSemantics sem) const {
     return absl::c_contains(semantics, sem);
   }

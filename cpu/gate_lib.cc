@@ -201,6 +201,15 @@ DynGateReg GateNetwork::GetOutput(int index) {
   return DynGateReg(std::move(res));
 }
 
+std::vector<DynGateReg> GateNetwork::GetOutputs() {
+  std::vector<DynGateReg> res;
+  res.reserve(output_bitwidths_.size());
+  for (int i = 0; i < output_bitwidths_.size(); ++i) {
+    res.push_back(GetOutput(i));
+  }
+  return res;
+}
+
 Gate::Gate(GateNetwork* owner, GateKind kind,
            absl::InlinedVector<GateTerminal, 2> inputs, int num_outputs)
     : owner_(owner),

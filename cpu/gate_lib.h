@@ -173,6 +173,7 @@ struct GateNetwork {
     }
   }
   DynGateReg GetOutput(int index);
+  std::vector<DynGateReg> GetOutputs();
 
   DynGateReg GetInput(int index) const {
     std::vector<GateTerminal> res;

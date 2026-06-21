@@ -13,6 +13,7 @@
 #include "absl/flags/parse.h"
 #include "cpu/alu.h"
 #include "cpu/compiler.h"
+#include "cpu/decoder.h"
 #include "cpu/export.h"
 #include "cpu/gate_lib.h"
 #include "cpu/register_file.h"
@@ -43,7 +44,7 @@ void BuildRegister(GateNetwork& net) {
   auto reg = MakeRegister(net, reset, clk, register_addr, read_addr_1,
                           read_addr_2, write_addr, write_data);
   net.DeclareOutput(reg.read_port_1, "rd_port1");
-  net.DeclareOutput(reg.read_port_2, " rd_port2");
+  net.DeclareOutput(reg.read_port_2, "rd_port2");
 }
 
 int print_usage() {
@@ -74,6 +75,8 @@ int main(int argc, char* argv[]) {
     auto b = net.AddInput<1>("b");
     auto sel = net.AddInput<1>("sel");
     net.DeclareOutput(DynGateReg({net.Mux(sel[0], a[0], b[0])}));
+  } else if (mod == "decoder") {
+    net.Build<Decoder>();
   } else {
     return print_usage();
   }

@@ -60,9 +60,11 @@ cc_test(
 
 cc_library(
     name = "cpu_modules",
-    hdrs = ["alu.h", "register_file.h"],
+    hdrs = ["alu.h", "register_file.h", "decoder.h"],
     deps = [
         ":gate_lib",
+        "//isa:instructions",
+        "@abseil-cpp//absl/container:linked_hash_map",
     ],
     visibility = ["//visibility:public"],
 )
@@ -159,6 +161,21 @@ cc_test(
         "@abseil-cpp//absl/status:status_matchers",
     ],
 )
+
+cc_test(
+    name = "decoder_test",
+    srcs = ["alu_test.cc"],
+    deps = [
+        ":cpu_modules",
+        ":eval",
+        ":gate_opt",
+        ":lower_gates",
+        ":compiler",
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:status_matchers",
+    ],
+)
+
 
 cc_test(
     name = "register_file_test",

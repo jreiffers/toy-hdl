@@ -21,12 +21,10 @@ int CountLiveGates(GateNetwork& net) {
 
 TEST(AluTest, TestSpec) {
   GateNetwork net;
-  auto alu = net.Build<Alu<2>>();
+  net.Build<Alu<2>>();
   RunGateOptPipeline(net, FoldGatesOpts{.lower_mux = true});
 
-  ABSL_EXPECT_OK(
-      VerifySpec(net, {net.GetOutput(0), net.GetOutput(1), net.GetOutput(2)},
-                 Alu<2>::spec));
+  ABSL_EXPECT_OK(VerifySpec(net, net.GetOutputs(), Alu<2>::spec));
 
   auto transistor_net = Compile(net);
   ABSL_EXPECT_OK(

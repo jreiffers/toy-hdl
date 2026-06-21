@@ -7,6 +7,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "cpu/alu.h"
+#include "cpu/decoder.h"
 #include "isa/encdec.h"
 #include "isa/instructions.h"
 #include "isa/visitor.h"
@@ -38,23 +39,11 @@ struct ParsedFields {
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kTestBitVal));
     ret.pred =
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kPredication));
-
-    ret.imm_valid = false;
-    ret.write_enable = false;
-
-    for (int i = 0; i < args.size(); ++i) {
-      for (auto f : field_semantics[i]) {
-        switch (f) {
-          SET(kDerefSrc, ret.deref_src);
-
-          case FieldSemantics::kRegWriteAddr:
-            ret.write_enable = true;
-            break;
-          case FieldSemantics::kImmediate:
-            ret.imm_valid = true;
-            break;
-        }
-      }
+    ret.deref_src = false;
+    for (auto em : field_semantics) {
+      ret.deref_src |=
+          absl::c_contains(em, FieldSemantics::kDerefSrc) &&
+          _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kDerefSrc));
     }
     return ret;
   }
@@ -63,12 +52,10 @@ struct ParsedFields {
   int ra0;
   int ra1;
   int wa;
-  bool write_enable;
   uint4_t imm;
-  bool imm_valid;
   Comparator comparator;
   bool test_bit_val;
-  std::optional<bool> deref_src = std::nullopt;
+  bool deref_src;
   uint16_t jmp_addr;
 };
 
@@ -80,16 +67,6 @@ absl::Status Emulator::Op(
   if (!maybe_f.ok()) return maybe_f.status();
   auto f = std::move(*maybe_f);
 
-  bool alu_shr = false;
-  bool alu_not = false;
-  bool alu_and = false;
-  bool alu_carry_in = false;
-  bool alu_zero_lhs = false;
-  bool alu_zero_rhs = false;
-  bool alu_not_rhs = false;
-
-  bool jump = false;
-  bool indirect = false;
   bool push_pc = false;
   bool pop_pc = false;
 
@@ -122,15 +99,6 @@ absl::Status Emulator::Op(
       case InstrSemantics::kCmpNz:
         f.comparator = Comparator::kNe;
         break;
-        SET(kAluZeroLhs, alu_zero_lhs);
-        SET(kAluZeroRhs, alu_zero_rhs);
-        SET(kAluNotRhs, alu_not_rhs);
-        SET(kAluShr, alu_shr);
-        SET(kAluNot, alu_not);
-        SET(kAluAnd, alu_and);
-        SET(kAluCarryIn, alu_carry_in);
-        SET(kJump, jump);
-        SET(kIndirect, indirect);
         SET(kPushPc, push_pc);
         SET(kPopPc, pop_pc);
         SET(kPushReg, push_reg);
@@ -150,12 +118,8 @@ absl::Status Emulator::Op(
   uint4_t rd_port_0 = state().read(f.ra0);
   uint4_t rd_port_1 = state().read(f.ra1);
 
-  if (f.deref_src && *f.deref_src) {
+  if (f.deref_src) {
     rd_port_1 = state().load(rd_port_1);
-  }
-
-  if (alu_not && alu_shr) {
-    return absl::InvalidArgumentError("neg & shr unsupported");
   }
 
   if (ld_gpi) {
@@ -166,11 +130,18 @@ absl::Status Emulator::Op(
     rd_port_1 = state().flag() * 15;
   }
 
-  auto ret =
-      Alu<4>::spec({rd_port_0, rd_port_1, f.imm, !alu_zero_lhs,
-                    alu_zero_rhs ? 0u : (alu_not_rhs ? 1u : 2u), f.imm_valid,
-                    alu_carry_in, alu_and, alu_not, alu_shr});
+  auto dec = Decoder::spec({rom_[state().pc()], pred_mismatch});
+  if (dec.size() != 11) {
+    return absl::InternalError("Unexpected number of outputs from decoder");
+  }
 
+  std::vector<uint32_t> alu_in{rd_port_0, rd_port_1, f.imm};
+  // TODO: support structs in specs.
+  for (int i = 0; i < 7; ++i) {
+    alu_in.push_back(dec[4 + i]);
+  }
+
+  auto ret = Alu<4>::spec(alu_in);
   uint4_t alu_res = ret[0];
   bool alu_ge = ret[1];
   bool alu_eq = ret[2];
@@ -191,11 +162,11 @@ absl::Status Emulator::Op(
     // b = direct jump addr
     // c = indirect jump addr
     uint32_t pc = state().pc();
-    uint32_t b_lut = jump && !pred_mismatch ? 2 : 0;
+    uint32_t b_lut = dec[2] ? 0 : 2;
     uint32_t ja = f.jmp_addr;
-    bool carry_in = pred_mismatch || (next_instruction && !jump);
-    bool a_enable = pred_mismatch || !jump;
-    bool c_enable = indirect;
+    bool carry_in = pred_mismatch || (next_instruction && dec[2]);
+    bool a_enable = dec[2];
+    bool c_enable = dec[3];
     uint4_t rb = state().rombank();
 
     std::array<uint32_t, 10> alu_vals_0{
@@ -215,7 +186,7 @@ absl::Status Emulator::Op(
     state().set_pc((next_pc_2 << 6) | (next_pc_1 << 2) | (next_pc_0 & 0b11));
   }
 
-  state().write(f.wa, (!pred_mismatch && f.write_enable) ? alu_res : rd_port_0);
+  state().write(f.wa, dec[0] ? alu_res : rd_port_0);
 
   if (flag_set && !pred_mismatch) {
     switch (f.comparator) {

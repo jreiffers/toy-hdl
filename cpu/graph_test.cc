@@ -65,8 +65,11 @@ TEST(GraphTest, TestAlu) {
   GateReg<2> b_lut = net.AddInput<2>();
   GateReg<1> c_enable = net.AddInput<1>();
 
-  Alu<1> alu = Alu<1>::Build(net, {a, b, c, a_enable, b_lut, c_enable, cin,
-                             kLowGate, kLowGate, kLowGate});
+  Alu<1> alu = Alu<1>::Build(
+      net, {a,
+            b,
+            c,
+            {a_enable, b_lut, c_enable, cin, kLowGate, kLowGate, kLowGate}});
   net.DeclareOutput(alu.carry_out);
   net.DeclareOutput(alu.res);
   net.DeclareOutput(alu.zero);
