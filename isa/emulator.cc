@@ -4,7 +4,6 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "cpu/alu.h"
 #include "cpu/decoder.h"
@@ -15,15 +14,7 @@
 namespace isa {
 
 struct ParsedFields {
-  static absl::StatusOr<ParsedFields> Get(
-      uint32_t instr, absl::Span<const uint32_t> args,
-      absl::Span<const absl::Span<const FieldSemantics>> field_semantics) {
-#define SET(c, target)                                                       \
-  case FieldSemantics::c:                                                    \
-    if (target) return absl::InvalidArgumentError("Duplicate " #target "."); \
-    target = static_cast<std::remove_cvref_t<decltype(*target)>>(args[i]);   \
-    break
-
+  static ParsedFields Get(uint32_t instr) {
     ParsedFields ret;
     ret.ra0 =
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegReadAddr0));
@@ -49,13 +40,10 @@ struct ParsedFields {
   uint16_t jmp_addr;
 };
 
-absl::Status Emulator::Op(
-    std::string_view mnemonic, absl::Span<const uint32_t> args,
-    absl::Span<const InstrSemantics> instr_semantics,
-    absl::Span<const absl::Span<const FieldSemantics>> field_semantics) {
-  auto maybe_f = ParsedFields::Get(rom_[state().pc()], args, field_semantics);
-  if (!maybe_f.ok()) return maybe_f.status();
-  auto f = std::move(*maybe_f);
+absl::Status Emulator::Op(std::string_view mnemonic, absl::Span<const uint32_t>,
+                          absl::Span<const InstrSemantics>,
+                          absl::Span<const absl::Span<const FieldSemantics>>) {
+  auto f = ParsedFields::Get(rom_[state().pc()]);
   bool pred_mismatch = f.pred && !state().flag();
 
   uint4_t rd_port_0 = state().read(f.ra0);
