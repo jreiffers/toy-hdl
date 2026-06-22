@@ -31,20 +31,12 @@ struct ParsedFields {
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegReadAddr1));
     ret.wa = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kRegWriteAddr));
     ret.imm = _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kImmediate));
-    ret.comparator = static_cast<Comparator>(
-        _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kAluCmp)));
     ret.jmp_addr =
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kJumpAddr));
     ret.test_bit_val =
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kTestBitVal));
     ret.pred =
         _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kPredication));
-    ret.deref_src = false;
-    for (auto em : field_semantics) {
-      ret.deref_src |=
-          absl::c_contains(em, FieldSemantics::kDerefSrc) &&
-          _pext_u32(instr, isa::GetFieldBits(FieldSemantics::kDerefSrc));
-    }
     return ret;
   }
 
@@ -53,9 +45,7 @@ struct ParsedFields {
   int ra1;
   int wa;
   uint4_t imm;
-  Comparator comparator;
   bool test_bit_val;
-  bool deref_src;
   uint16_t jmp_addr;
 };
 
@@ -66,88 +56,39 @@ absl::Status Emulator::Op(
   auto maybe_f = ParsedFields::Get(rom_[state().pc()], args, field_semantics);
   if (!maybe_f.ok()) return maybe_f.status();
   auto f = std::move(*maybe_f);
-
-  bool push_pc = false;
-  bool pop_pc = false;
-
-  bool push_reg = false;
-  bool pop_reg = false;  // TODO go through ALU?
-
-  bool st_mem = false;
-  bool ld_gpi = false;
-
-  bool wait = false;
-  bool flag_get = false;
-  bool flag_set = false;
-
-  bool mem_bank_set = false;
-  bool rom_bank_set = false;
-
-  if (mnemonic == "invflag") {
-    // Decodes instruction as comparator, doesn't need circuitry.
-    f.comparator = static_cast<Comparator>(3);
-  }
-
-#undef SET
-#define SET(c, target)    \
-  case InstrSemantics::c: \
-    target = true;        \
-    break;
-
-  for (auto i : instr_semantics) {
-    switch (i) {
-      case InstrSemantics::kCmpNz:
-        f.comparator = Comparator::kNe;
-        break;
-        SET(kPushPc, push_pc);
-        SET(kPopPc, pop_pc);
-        SET(kPushReg, push_reg);
-        SET(kPopReg, pop_reg);
-        SET(kStMem, st_mem);
-        SET(kLdGpi, ld_gpi);
-        SET(kWait, wait);
-        SET(kFlagGet, flag_get);
-        SET(kFlagSet, flag_set);
-        SET(kMemBankSet, mem_bank_set);
-        SET(kRomBankSet, rom_bank_set);
-    }
-  }
-
   bool pred_mismatch = f.pred && !state().flag();
 
   uint4_t rd_port_0 = state().read(f.ra0);
   uint4_t rd_port_1 = state().read(f.ra1);
 
-  if (f.deref_src) {
+  auto dec = Decoder::spec({rom_[state().pc()], pred_mismatch});
+
+  if (dec.deref_src.value()) {
     rd_port_1 = state().load(rd_port_1);
   }
 
-  if (ld_gpi) {
+  if (dec.load_gpi.value()) {
     rd_port_1 = state().load_gpi(rd_port_1);
   }
 
-  if (flag_get) {
+  if (dec.flag_get.value()) {
     rd_port_1 = state().flag() * 15;
   }
 
-  auto dec = Decoder::spec({rom_[state().pc()], pred_mismatch});
   auto ret = Alu<4>::spec({rd_port_0, rd_port_1, f.imm, dec.alu_flags});
   uint4_t alu_res = ret.res.value();
-  bool alu_ge = ret.carry_out.value();
-  bool alu_eq = ret.zero.value();
 
-  if (!pred_mismatch) {
-    if (mem_bank_set) state().set_membank(rd_port_0);
-    if (rom_bank_set) state().set_rombank(rd_port_0);
-    if (pop_reg) alu_res = state().pop();
-    if (push_reg) state().push(alu_res);
-    if (st_mem) state().store(rd_port_0, alu_res);
-    if (push_pc) state().push_pc();
-    if (pop_pc) state().pop_pc();
-  }
+  if (dec.membank_set.value()) state().set_membank(rd_port_0);
+  if (dec.rombank_set.value()) state().set_rombank(rd_port_0);
+  if (dec.push.value()) state().push(alu_res);
+  if (dec.pop.value()) alu_res = state().pop();
+  if (dec.store.value()) state().store(rd_port_0, alu_res);
+  if (dec.push_pc.value()) state().push_pc();
+  if (dec.pop_pc.value()) state().pop_pc();
 
   {
-    bool next_instruction = !wait || (alu_eq == f.test_bit_val);
+    bool next_instruction =
+        !dec.wait.value() || (ret.zero.value() == f.test_bit_val);
     // a = current PC
     // b = direct jump addr
     // c = indirect jump addr
@@ -174,15 +115,16 @@ absl::Status Emulator::Op(
 
   state().write(f.wa, dec.write_enable.value() ? alu_res : rd_port_0);
 
-  if (flag_set && !pred_mismatch) {
-    switch (f.comparator) {
+  if (dec.flag_set.value()) {
+    auto cmp = static_cast<Comparator>(dec.cmp.value());
+    switch (cmp) {
       case Comparator::kEq:
       case Comparator::kNe:
-        state().set_flag(alu_eq == (f.comparator == Comparator::kEq));
+        state().set_flag(ret.zero.value() == (cmp == Comparator::kEq));
         break;
       case Comparator::kGe:
       case Comparator::kLt:
-        state().set_flag(alu_ge == (f.comparator == Comparator::kGe));
+        state().set_flag(ret.carry_out.value() == (cmp == Comparator::kGe));
         break;
     }
   }

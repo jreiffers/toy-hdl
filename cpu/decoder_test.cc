@@ -14,7 +14,7 @@ TEST(DecoderTest, TestSpec) {
   GateNetwork net;
   net.Build<Decoder>();
   RunGateOptPipeline(net, FoldGatesOpts{.lower_mux = true});
-  ABSL_EXPECT_OK(VerifySpec<Decoder::Spec>(net));
+  ABSL_EXPECT_OK(VerifySpec<Decoder>(net));
   auto transistor_net = Compile(net);
-  ABSL_EXPECT_OK(VerifySpec<Decoder::spec>(transistor_net));
+  ABSL_EXPECT_OK(VerifySpec<Decoder>(transistor_net));
 }

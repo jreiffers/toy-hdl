@@ -29,6 +29,18 @@ struct Decoder {
     Ty<2> cmp;
     Ty<1> no_jump;
     Ty<1> indirect;
+    Ty<1> membank_set;
+    Ty<1> rombank_set;
+    Ty<1> pop;
+    Ty<1> push;
+    Ty<1> store;
+    Ty<1> pop_pc;
+    Ty<1> push_pc;
+    Ty<1> deref_src;
+    Ty<1> load_gpi;
+    Ty<1> flag_set;
+    Ty<1> flag_get;
+    Ty<1> wait;
     AluFlags<Ty> alu_flags;
   };
 
@@ -58,6 +70,9 @@ struct Decoder {
       cmp = static_cast<uint32_t>(Comparator::kNe);
     }
 
+  bool deref_src = _pext_u32(bits, isa::GetFieldBits(FieldSemantics::kDerefSrc)) &&
+      it->Has(FieldSemantics::kDerefSrc);
+
     uint32_t b_lut = it->Has(InstrSemantics::kAluZeroRhs)
                          ? 0
                          : (it->Has(InstrSemantics::kAluNotRhs) ? 1 : 2);
@@ -72,8 +87,22 @@ struct Decoder {
 
     return {!pred_mismatch &&
                 it->Has(FieldSemantics::kRegWriteAddr) /*write_enable*/,
-            cmp, pred_mismatch || !it->Has(InstrSemantics::kJump) /*no_jump*/,
-            it->Has(InstrSemantics::kIndirect), flags};
+            cmp,
+            pred_mismatch || !it->Has(InstrSemantics::kJump) /*no_jump*/,
+            it->Has(InstrSemantics::kIndirect),
+            !pred_mismatch && it->Has(InstrSemantics::kMemBankSet),
+            !pred_mismatch && it->Has(InstrSemantics::kRomBankSet),
+            !pred_mismatch && it->Has(InstrSemantics::kPopReg),
+            !pred_mismatch && it->Has(InstrSemantics::kPushReg),
+            !pred_mismatch && it->Has(InstrSemantics::kStMem),
+            !pred_mismatch && it->Has(InstrSemantics::kPopPc),
+            !pred_mismatch && it->Has(InstrSemantics::kPushPc),
+            deref_src,
+            it->Has(InstrSemantics::kLdGpi),
+            !pred_mismatch && it->Has(InstrSemantics::kFlagSet),
+            it->Has(InstrSemantics::kFlagGet),
+            it->Has(InstrSemantics::kWait),
+            flags};
   }
 
   static Outs<GateReg> Build(GateNetwork& net, const Args<GateReg>& a) {
@@ -175,6 +204,29 @@ struct Decoder {
       decoder.no_jump =
           net.Or(a.pred_mismatch, net.Not(has(InstrSemantics::kJump)));
       decoder.indirect = has(InstrSemantics::kIndirect);
+    }
+
+    {
+      ScopeGuard g(net, "oneoffs");
+      auto t = [&](InstrSemantics sem) {
+        return net.And(pred_match, has(sem));
+      };
+      decoder.membank_set = t(InstrSemantics::kMemBankSet);
+      decoder.pop = t(InstrSemantics::kPopReg);
+      decoder.pop_pc = t(InstrSemantics::kPopPc);
+      decoder.push = t(InstrSemantics::kPushReg);
+      decoder.push_pc = t(InstrSemantics::kPushPc);
+      decoder.rombank_set = t(InstrSemantics::kRomBankSet);
+      decoder.store = t(InstrSemantics::kStMem);
+
+      ExtractBits<1>(GetFieldBits(FieldSemantics::kDerefSrc), instruction,
+                     decoder.deref_src);
+      decoder.deref_src =
+          net.And(has(FieldSemantics::kDerefSrc), decoder.deref_src);
+      decoder.load_gpi = has(InstrSemantics::kLdGpi);
+      decoder.flag_set = t(InstrSemantics::kFlagSet);
+      decoder.flag_get = has(InstrSemantics::kFlagGet);
+      decoder.wait = has(InstrSemantics::kWait);
     }
 
     return decoder;

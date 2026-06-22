@@ -167,7 +167,7 @@ cc_test(
 
 cc_test(
     name = "decoder_test",
-    srcs = ["alu_test.cc"],
+    srcs = ["decoder_test.cc"],
     deps = [
         ":cpu_modules",
         ":eval",
