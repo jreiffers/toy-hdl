@@ -55,13 +55,13 @@ struct Gate {
   GateTerminal input(int index) { return inputs_[index]; }
   void SetInput(int index, GateTerminal new_input);
 
-  void ReplaceAllUsesWith(GateTerminal replacement);
+  void ReplaceAllUsesWith(GateTerminal replacement, Gate* except = nullptr);
 
   void set_lookup_data(uint64_t data) { lookup_data_ = data; }
   uint64_t lookup_data() const { return lookup_data_; }
 
   // Erases all inputs that reference the given terminal. If kind == kLookup,
-  // only considers the positive inputs for matching and also erased the
+  // only considers the positive inputs for matching and also erases the
   // corresponding negated ones.
   uint64_t EraseInputs(GateTerminal input);
 
@@ -295,6 +295,15 @@ struct GateNetwork {
   void WalkUnordered(const std::function<void(int id, Gate& gate)>& fn);
 
   const std::unordered_set<GateUse>& GetUsers(GateTerminal terminal) const;
+  bool IsOnlyUsedByNot(GateTerminal terminal) {
+    bool any_use = false;
+    for (auto [user, _] : GetUsers(terminal)) {
+      if (!user) return false;
+      if (user->kind() != GateKind::kNot) return false;
+      any_use = true;
+    }
+    return any_use;
+  }
 
   void PushScope(std::string scope) { scope_.push_back(std::move(scope)); }
   void PopScope() { scope_.pop_back(); }

@@ -16,6 +16,9 @@ struct FoldGatesOpts {
 bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts);
 bool CseGates(GateNetwork& net);
 bool MergeGates(GateNetwork& net);
+bool FactorGates(GateNetwork& net);
+bool OptimizeCNF(GateNetwork& net);
+bool RunCanonicalizer(GateNetwork& net);
 
 bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts);
 

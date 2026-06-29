@@ -305,7 +305,7 @@ void Gate::Erase() {
   inputs_.clear();
 }
 
-void Gate::ReplaceAllUsesWith(GateTerminal replacement) {
+void Gate::ReplaceAllUsesWith(GateTerminal replacement, Gate* except) {
   if (replacement == output(0)) return;
 
   assert(num_outputs_ == 1);
@@ -317,11 +317,15 @@ void Gate::ReplaceAllUsesWith(GateTerminal replacement) {
   auto uses = use_it->second;
 
   for (auto [gate, input] : uses) {
-    gate->SetInput(input, replacement);
+    if (gate != except) {
+      gate->SetInput(input, replacement);
+    }
   }
 
-  assert(owner_->uses_[output(0)].empty());
-  owner_->uses_.erase(output(0));
+  if (!except) {
+    assert(owner_->uses_[output(0)].empty());
+    owner_->uses_.erase(output(0));
+  }
 }
 
 void Gate::SetInput(int index, GateTerminal new_input) {
