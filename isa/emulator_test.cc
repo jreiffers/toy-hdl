@@ -189,6 +189,17 @@ TEST(EmulatorTest, WaitFalse) {
   EXPECT_EQ(cycles, 100);
 }
 
+TEST(EmulatorTest, WaitPredicated) {
+  int cycles;
+
+  auto final_state = RunProgram(R"(
+    + wait r0 r1 0   // wait for [0] != 0
+  )",
+                                {}, &cycles);
+
+  EXPECT_EQ(cycles, 1);
+}
+
 // TODO finalize the comparison operators to support
 TEST(EmulatorTest, Testi) {
   TestAll2("movi %d r0 testi r0 == %d", Eq);
@@ -450,6 +461,17 @@ TEST(MockTests, TestDerefMov) {
   EXPECT_CALL(*state, load(uint4_t{7})).WillOnce(Return(15));
   EXPECT_CALL(*state, write(kR2, uint4_t(15)));
   RunProgram("mov [r1] r2", std::move(state));
+}
+
+TEST(MockTests, TestPredRombank) {
+  auto state = std::make_unique<MockState>();
+  EXPECT_CALL(*state, flag()).WillOnce(Return(false));
+  EXPECT_CALL(*state, read(kR1)).WillOnce(Return(7));
+  EXPECT_CALL(*state, read(kR2)).WillOnce(Return(3));
+  EXPECT_CALL(*state, write(kR2, uint4_t{3}));
+
+  EXPECT_CALL(*state, set_rombank(testing::_)).Times(0);
+  RunProgram("+ rombank r2", std::move(state));
 }
 
 }  // namespace

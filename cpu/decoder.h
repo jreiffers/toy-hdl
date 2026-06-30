@@ -70,8 +70,9 @@ struct Decoder {
       cmp = static_cast<uint32_t>(Comparator::kNe);
     }
 
-  bool deref_src = _pext_u32(bits, isa::GetFieldBits(FieldSemantics::kDerefSrc)) &&
-      it->Has(FieldSemantics::kDerefSrc);
+    bool deref_src =
+        _pext_u32(bits, isa::GetFieldBits(FieldSemantics::kDerefSrc)) &&
+        it->Has(FieldSemantics::kDerefSrc);
 
     uint32_t b_lut = it->Has(InstrSemantics::kAluZeroRhs)
                          ? 0
@@ -147,6 +148,16 @@ struct Decoder {
       return net.Not(net.Nor(sels));
     };
 
+    auto has2 = [&](auto it) {
+      std::vector<GateTerminal> sels;
+      for (auto [instr, sel] : instruction_sel) {
+        if (!instr->Has(it)) {
+          sels.push_back(sel);
+        }
+      }
+      return net.Nor(sels);
+    };
+
     {
       ScopeGuard g(net, "alu_bits");
       auto& f = decoder.alu_flags;
@@ -187,7 +198,7 @@ struct Decoder {
     {
       ScopeGuard g(net, "write_enable");
       decoder.write_enable =
-          net.And(pred_match, has(FieldSemantics::kRegWriteAddr));
+          net.And(pred_match, has2(FieldSemantics::kRegWriteAddr));
     }
 
     {

@@ -81,12 +81,20 @@ int main(int argc, char* argv[]) {
     return print_usage();
   }
 
+  std::string format = absl::GetFlag(FLAGS_format);
+  if (format == "gneto0") {
+    print_graphviz(net);
+    return 0;
+  }
+
   CompileOpts opts;
+  if (format == "fpga") {
+    opts.fpga_spec = {.nor_arity = 4};
+  }
   opts.avoid_transmission_gates = absl::GetFlag(FLAGS_avoid_transmission_gates);
   auto transistor_net = Compile(net, opts);
 
-  std::string format = absl::GetFlag(FLAGS_format);
-  if (format == "gnet") {
+  if (format == "gnet" || format == "fpga") {
     print_graphviz(net);
   } else if (format == "tnet") {
     print_graphviz(transistor_net);
@@ -99,6 +107,50 @@ int main(int argc, char* argv[]) {
     bool succ = netlist.SerializeToOstream(&output);
     (void)succ;
     assert(succ);
+  } else if (format == "summary") {
+    std::map<GateKind, std::map<int, int>> gates;
+    std::map<GateKind, std::map<int, int>> use_counts;
+    std::map<std::string_view, std::map<std::string_view, int>> edges;
+
+    net.WalkUnordered([&](int, Gate& gate) {
+      ++gates[gate.kind()][gate.num_inputs()];
+      for (int i = 0; i < gate.num_inputs(); ++i) {
+        auto* in = gate.input(i).first;
+        ++edges[in ? to_string(in->kind()) : "input"][to_string(gate.kind())];
+      }
+
+      ++use_counts[gate.kind()][net.GetUsers(gate.output()).size()];
+    });
+
+    for (auto out : net.GetOutputs()) {
+      for (int i = 0; i < out.bitwidth(); ++i) {
+        ++edges[to_string(out[i].first->kind())]["output"];
+      }
+    }
+
+    std::cout << "Gate counts:\n";
+    for (const auto& [kind, arity_count] : gates) {
+      for (auto [arity, count] : arity_count) {
+        std::cout << "  " << to_string(kind) << "(" << arity << "): " << count
+                  << "\n";
+      }
+    }
+
+    std::cout << "Edge counts:\n";
+    for (const auto& [src, dst_count] : edges) {
+      for (auto [dst, count] : dst_count) {
+        std::cout << "  " << src << " -> " << dst << ": " << count << "\n";
+      }
+    }
+
+    std::cout << "Use counts:\n";
+    for (const auto& [kind, uses_count] : use_counts) {
+      for (auto [uses, count] : uses_count) {
+        std::cout << "  " << to_string(kind) << "(" << uses
+                  << " uses): " << count << "\n";
+      }
+    }
+
   } else {
     return print_usage();
   }

@@ -142,6 +142,30 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
         }
       }
 
+      auto split_nand_nor = [&](std::optional<int> max_arity,
+                                GateKind gate_kind) {
+        if (!max_arity) return;
+        if (gate.kind() != gate_kind || gate.num_inputs() <= max_arity) return;
+
+        absl::InlinedVector<GateTerminal, 2> internals;
+        for (int i = 0; i < gate.num_inputs(); i += *max_arity) {
+          int n = std::min(gate.num_inputs() - i, *max_arity);
+          auto span = gate.inputs().subspan(i, n);
+          internals.push_back(
+              net.AddGate(gate_kind, absl::InlinedVector<GateTerminal, 2>(
+                                         span.begin(), span.end()))
+                  .output());
+        }
+
+        GateKind combiner =
+            gate_kind == GateKind::kNor ? GateKind::kNand : GateKind::kNor;
+        gate.ReplaceAllUsesWith(
+            net.Not(net.AddGate(combiner, internals).output()));
+      };
+
+      split_nand_nor(opts.maximum_nor_arity, GateKind::kNor);
+      split_nand_nor(opts.maximum_nand_arity, GateKind::kNand);
+
       opts.callback();
       changed |= canonicalized;
     });
@@ -580,7 +604,7 @@ bool FactorGates(GateNetwork& net) {
         for (auto gate : valid_gates) {
           for (auto input : inputs) {
             if (!gate->EraseInputs(input)) {
-              throw std::logic_error("Expected input to be erase.");
+              throw std::logic_error("Expected input to be erased.");
             }
           }
 
@@ -596,6 +620,9 @@ bool FactorGates(GateNetwork& net) {
           invalidated_gates.insert(gate);
         }
 
+        // TODO: Fix the greedy path. All uses of `gate` need to be skipped,
+        // maybe more.
+        return true;
         any_change = true;
       }
     }
@@ -616,19 +643,25 @@ bool OptimizeCNF(GateNetwork& net) {
   // Not necessarily full CNFs; having a CNF-like subset is enough. The values
   // are the cnf-like subset.
   absl::linked_hash_map<Gate*, absl::InlinedVector<Gate*, 10>> cnfs;
+  absl::linked_hash_map<Gate*, absl::InlinedVector<GateTerminal, 2>>
+      extra_inputs;
   net.WalkUnordered([&](int, Gate& gate) {
     if (gate.kind() == GateKind::kNor) {
       absl::InlinedVector<Gate*, 10> clauses;
+      absl::InlinedVector<GateTerminal, 2> extras;
       for (int i = 0; i < gate.num_inputs(); ++i) {
         auto* in = gate.input(i).first;
         if (in &&
             (in->kind() == GateKind::kNor || in->kind() == GateKind::kNot)) {
           clauses.push_back(in);
+        } else {
+          extras.push_back(gate.input(i));
         }
       }
 
       if (clauses.size() > 1) {
         cnfs[&gate] = std::move(clauses);
+        extra_inputs[&gate] = std::move(extras);
       }
     }
   });
@@ -702,7 +735,7 @@ bool OptimizeCNF(GateNetwork& net) {
             if (erased.contains(p2)) continue;
 
             uint64_t diff = p1 ^ p2;
-            if (__builtin_popcount(diff) == 1) {
+            if (__builtin_popcountll(diff) == 1) {
               ABSL_CHECK(mask & diff);
 
               // This rewrite can actually increase transistor count, so one
@@ -735,12 +768,12 @@ bool OptimizeCNF(GateNetwork& net) {
       absl::InlinedVector<GateTerminal, 10> negated_inputs;
       for (auto input : inputs) negated_inputs.push_back(net.Not(input));
 
-      absl::InlinedVector<GateTerminal, 2> new_inputs;
+      absl::InlinedVector<GateTerminal, 2> new_inputs(extra_inputs[cnf]);
       for (const auto& [mask, parities] : parities_for_masks) {
         for (uint64_t parity : parities) {
           absl::InlinedVector<GateTerminal, 2> inner_inputs;
           for (int i = 0; i < inputs.size(); ++i) {
-            uint64_t bit = 1 << i;
+            uint64_t bit = 1ull << i;
             if (!(mask & bit)) continue;
             inner_inputs.push_back((parity & bit ? negated_inputs : inputs)[i]);
           }
@@ -781,7 +814,8 @@ bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts) {
       sub_changed = false;
       // There's a nondet somewhere around here (:decoder_test).
       sub_changed |= OptimizeCNF(net);
-      sub_changed |= FactorGates(net);
+      // TODO: FactorGates should be idempotent.
+      while (FactorGates(net)) sub_changed = true;
       sub_changed |= RunCanonicalizer(net);
       sub_changed |= CseGates(net);
       changed |= sub_changed;

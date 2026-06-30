@@ -10,6 +10,9 @@ struct FoldGatesOpts {
   // Lower mux to logic gates (avoids transmission gates).
   bool lower_mux = false;
 
+  std::optional<int> maximum_nor_arity = std::nullopt;
+  std::optional<int> maximum_nand_arity = std::nullopt;
+
   std::function<void()> callback = +[]() {};
 };
 
