@@ -3,6 +3,15 @@
 
 #include "cpu/gate_lib.h"
 
+enum class FpgaResource {
+  kInput,
+  kNorGate,
+  kNandGate,
+  kLut2Gate,
+  kFlipFlop,
+  kOutput,
+};
+
 struct FpgaSpec {
   // A giant matrix with jumper positions for all of the in/out combinations
   // would be nice, but it'll probably be too large. Therefore, there's an
@@ -14,17 +23,75 @@ struct FpgaSpec {
   int num_nands;
   int num_lut2s;
   int num_outputs;
+
   int bus_width;
   int nor_arity;
 
+  constexpr int capacity(FpgaResource res) const {
+    switch (res) {
+      case FpgaResource::kInput:
+        return num_inputs;
+      case FpgaResource::kNorGate:
+        return num_nors;
+      case FpgaResource::kNandGate:
+        return num_nands;
+      case FpgaResource::kLut2Gate:
+        return num_lut2s;
+      case FpgaResource::kFlipFlop:
+        return num_ffs;
+      case FpgaResource::kOutput:
+        return num_outputs;
+    }
+  }
+
+  constexpr int output_index(FpgaResource res, int res_index, bool neg) const {
+    switch (res) {
+      case FpgaResource::kInput:
+        return 2 * res_index + neg;
+      case FpgaResource::kNorGate:
+        return output_index(FpgaResource::kInput, num_inputs, false) +
+               2 * res_index + neg;
+      case FpgaResource::kNandGate:
+        return output_index(FpgaResource::kNorGate, num_nors, false) +
+               2 * res_index + neg;
+      case FpgaResource::kLut2Gate:
+        return output_index(FpgaResource::kNandGate, num_nands, false) +
+               2 * res_index + neg;
+      case FpgaResource::kFlipFlop:
+        return output_index(FpgaResource::kLut2Gate, num_lut2s, false) +
+               2 * res_index + neg;
+      case FpgaResource::kOutput:
+        throw std::logic_error("Outputs don't have outputs.");
+    }
+  }
+
+  constexpr int input_index(FpgaResource res, int res_index, int input) const {
+    switch (res) {
+      case FpgaResource::kInput:
+        throw std::logic_error("Inputs don't have inputs.");
+      case FpgaResource::kNorGate:
+        return nor_arity * res_index + input;
+      case FpgaResource::kNandGate:
+        return input_index(FpgaResource::kNorGate, num_nors, 0) +
+               2 * res_index + input;
+      case FpgaResource::kLut2Gate:
+        return input_index(FpgaResource::kNandGate, num_nands, 0) +
+               2 * res_index + input;
+      case FpgaResource::kFlipFlop:
+        return input_index(FpgaResource::kLut2Gate, num_lut2s, 0) +
+               2 * res_index + input;
+      case FpgaResource::kOutput:
+        return input_index(FpgaResource::kFlipFlop, num_ffs, 0) +
+               2 * res_index + input;
+    }
+  }
+
   constexpr int num_out_signals() const {
-    // We have the complement of each signal.
-    return (num_inputs + num_nors + num_ffs + num_nands + num_lut2s) * 2;
+    return output_index(FpgaResource::kFlipFlop, num_ffs, false);
   }
 
   constexpr int num_in_signals() const {
-    return nor_arity * num_nors + num_ffs * 2 /* write_enable, data */ +
-           num_nands * 2 + num_lut2s * 2 + num_outputs * 2 /* enable, data */;
+    return input_index(FpgaResource::kOutput, num_outputs, 0);
   }
 };
 
