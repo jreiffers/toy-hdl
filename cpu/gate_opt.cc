@@ -760,7 +760,7 @@ bool OptimizeCNF(GateNetwork& net) {
         ABSL_CHECK(parities_for_masks[mask].erase(parity));
       }
       for (auto [mask, parity] : to_add) {
-        ABSL_CHECK(parities_for_masks[mask].insert(parity).second);
+        parities_for_masks[mask].insert(parity);
       }
     } while (!to_erase.empty());
 

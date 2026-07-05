@@ -3,62 +3,80 @@
 
 #include "cpu/gate_lib.h"
 
+enum class FpgaResource {
+  kIn,    // 2
+  kNor,   // nor_arity * 2 + 2
+  kNand,  // 6
+  kLut2,  // 14
+  kFF,    // 12?
+  kOut,   // 12
+
+  // TODO add a couple muxes
+};
+
+//
 struct FpgaSpec {
-  // A giant matrix with jumper positions for all of the in/out combinations
-  // would be nice, but it'll probably be too large. Therefore, there's an
-  // internal bus of configurable width instead (maybe later split into segments
-  // with different lengths).
-  int num_inputs;
-  int num_nors;
-  int num_ffs;
-  int num_nands;
-  int num_lut2s;
-  int num_outputs;
-  int bus_width;
+  std::vector<std::vector<FpgaResource>> resources;
+  int bus_width;  // horizontal / vertical, per col/row.
   int nor_arity;
 
-  constexpr int num_out_signals() const {
-    // We have the complement of each signal.
-    return (num_inputs + num_nors + num_ffs + num_nands + num_lut2s) * 2;
+  int rows() const { return resources.size(); }
+  int cols() const { return resources.front().size(); }
+
+  int arity(FpgaResource res) const {
+    switch (res) {
+      case FpgaResource::kIn:
+        return 0;
+      case FpgaResource::kNor:
+        return nor_arity;
+      default:
+        return 2;
+    }
   }
 
-  constexpr int num_in_signals() const {
-    return nor_arity * num_nors + num_ffs * 2 /* write_enable, data */ +
-           num_nands * 2 + num_lut2s * 2 + num_outputs * 2 /* enable, data */;
+  int capacity(FpgaResource res) const {
+    int count = 0;
+    for (const auto& row : resources) {
+      for (auto col : row) {
+        if (col == res) ++count;
+      }
+    }
+    return count;
   }
 };
 
+/*
 // FPGA is short for finger-programmable gate array.
 // The configuration "circuitry" isn't here; it'll be done in python.
 template <FpgaSpec spec>
 struct Fpga {
   template <template <int> class Ty>
   struct Outs {
-    Ty<spec.num_inputs> not_inputs;
+    Ty<spec.capacity(FpgaResource::kInput> not_inputs;
 
-    Ty<spec.num_nors> nors;
-    Ty<spec.num_nors> ors;
+    Ty<spec.capacity(FpgaResource::kNorGate)> nors;
+    Ty<spec.capacity(FpgaResource::kNorGate)> ors;
 
-    Ty<spec.num_nands> nands;
-    Ty<spec.num_nands> ands;
+    Ty<spec.capacity(FpgaResource::kNandGate)> nands;
+    Ty<spec.capacity(FpgaResource::kNandGate)> ands;
 
-    Ty<spec.num_lut2s> luts;
-    Ty<spec.num_lut2s> not_luts;
+    Ty<spec.capacity(FpgaResource::kLut2Gate)> luts;
+    Ty<spec.capacity(FpgaResource::kLut2Gate)> not_luts;
   };
 
   template <template <int> class Ty>
   struct Args {
-    Ty<spec.num_inputs> inputs;
-    Ty<spec.num_nors * spec.nor_arity> nor_ins;
-    Ty<spec.num_nands * 2> nand_ins;
     Ty<1> clk;
     Ty<1> reset;
-    Ty<spec.num_ffs> write_enable;
-    Ty<spec.num_ffs> flipflop_vals;
-    Ty<spec.num_lut2s * 4> lut_bits;
-    Ty<spec.num_lut2s * 2> lut_ins;
-    Ty<spec.num_outputs> output_enable;
-    Ty<spec.num_outputs> output_data;
+    Ty<spec.capacity(FpgaResource::kInput)> inputs;
+    Ty<spec.capacity(FpgaResource::kNorGate) * spec.nor_arity> nor_ins;
+    Ty<spec.capacity(FpgaResource::kNandGate) * 2> nand_ins;
+    Ty<spec.capacity(FpgaResource::kFlipFlop)> write_enable;
+    Ty<spec.capacity(FpgaResource::kFlipFlop)> flipflop_vals;
+    Ty<spec.capacity(FpgaResource::kLut2Gate) * 4> lut_bits;
+    Ty<spec.capacity(FpgaResource::kLut2Gate) * 2> lut_ins;
+    Ty<spec.capacity(FpgaResource::kOutput)> output_enable;
+    Ty<spec.capacity(FpgaResource::kOutput)> output_data;
   };
 
   static Outs<GateReg> Build(GateNetwork& net, const Args<GateReg>& a) {
@@ -66,5 +84,6 @@ struct Fpga {
     return res;
   }
 };
+*/
 
 #endif  // FPGA_H__

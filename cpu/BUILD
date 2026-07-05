@@ -45,8 +45,16 @@ cc_library(
 
 cc_library(
     name = "fpga_mapping",
+    srcs = ["fpga_mapping.cc"],
     hdrs = ["fpga_mapping.h"],
-    deps = [":gate_lib", ":fpga"],
+    deps = [
+        ":gate_lib",
+        ":fpga",
+        ":graph",
+        "@abseil-cpp//absl/types:span",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/container:flat_hash_map",
+    ],
 )
 
 cc_test(

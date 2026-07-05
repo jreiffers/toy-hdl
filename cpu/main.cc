@@ -31,6 +31,7 @@ ABSL_FLAG(std::string, output, "",
           "output is binary.");
 ABSL_FLAG(bool, avoid_transmission_gates, true,
           "If set, do not emit transmission gates.");
+ABSL_FLAG(bool, fpga, false, "If set, use fpga mode.");
 
 template <int bw, int addrbits>
 void BuildRegister(GateNetwork& net) {
@@ -88,13 +89,14 @@ int main(int argc, char* argv[]) {
   }
 
   CompileOpts opts;
-  if (format == "fpga") {
-    opts.fpga_spec = {.nor_arity = 4};
-  }
   opts.avoid_transmission_gates = absl::GetFlag(FLAGS_avoid_transmission_gates);
+  if (absl::GetFlag(FLAGS_fpga)) {
+    opts.fpga_spec = {.nor_arity = 4};
+    opts.avoid_transmission_gates = false;
+  }
   auto transistor_net = Compile(net, opts);
 
-  if (format == "gnet" || format == "fpga") {
+  if (format == "gnet") {
     print_graphviz(net);
   } else if (format == "tnet") {
     print_graphviz(transistor_net);
