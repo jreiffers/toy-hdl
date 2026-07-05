@@ -45,45 +45,85 @@ struct FpgaSpec {
   }
 };
 
-/*
-// FPGA is short for finger-programmable gate array.
-// The configuration "circuitry" isn't here; it'll be done in python.
-template <FpgaSpec spec>
-struct Fpga {
+// FPGA is short for finger-programmable gate array. This is just one of
+// each resource type.
+template <int nor_arity>
+struct FpgaGates {
   template <template <int> class Ty>
   struct Outs {
-    Ty<spec.capacity(FpgaResource::kInput> not_inputs;
-
-    Ty<spec.capacity(FpgaResource::kNorGate)> nors;
-    Ty<spec.capacity(FpgaResource::kNorGate)> ors;
-
-    Ty<spec.capacity(FpgaResource::kNandGate)> nands;
-    Ty<spec.capacity(FpgaResource::kNandGate)> ands;
-
-    Ty<spec.capacity(FpgaResource::kLut2Gate)> luts;
-    Ty<spec.capacity(FpgaResource::kLut2Gate)> not_luts;
+    Ty<2> in;
+    Ty<2> nor;
+    Ty<2> nand;
+    Ty<2> lut;
+    Ty<2> ff;
+    Ty<1> out;
   };
 
   template <template <int> class Ty>
   struct Args {
     Ty<1> clk;
     Ty<1> reset;
-    Ty<spec.capacity(FpgaResource::kInput)> inputs;
-    Ty<spec.capacity(FpgaResource::kNorGate) * spec.nor_arity> nor_ins;
-    Ty<spec.capacity(FpgaResource::kNandGate) * 2> nand_ins;
-    Ty<spec.capacity(FpgaResource::kFlipFlop)> write_enable;
-    Ty<spec.capacity(FpgaResource::kFlipFlop)> flipflop_vals;
-    Ty<spec.capacity(FpgaResource::kLut2Gate) * 4> lut_bits;
-    Ty<spec.capacity(FpgaResource::kLut2Gate) * 2> lut_ins;
-    Ty<spec.capacity(FpgaResource::kOutput)> output_enable;
-    Ty<spec.capacity(FpgaResource::kOutput)> output_data;
+
+    Ty<1> input;
+    Ty<nor_arity> nor_inputs;
+    Ty<2> nand_inputs;
+    Ty<2> lut_inputs;
+    Ty<4> lut_bits;
+    Ty<2> ff_inputs;
+    Ty<2> tri_state_inputs;
   };
 
   static Outs<GateReg> Build(GateNetwork& net, const Args<GateReg>& a) {
     Outs<GateReg> res;
+
+    {
+      ScopeGuard g(net, "input");
+      res.in[0] = a.input[0];
+      res.in[1] = net.Not(res.in[0]);
+    }
+
+    {
+      ScopeGuard g(net, "nor");
+      absl::InlinedVector<GateTerminal, 2> nor_ins;
+      for (int i = 0; i < nor_arity; ++i) {
+        nor_ins.push_back(a.nor_inputs[i]);
+      }
+      res.nor[0] = net.Nor(nor_ins);
+      res.nor[1] = net.Not(res.nor[0]);
+    }
+
+    {
+      ScopeGuard g(net, "nand");
+      res.nand[0] = net.Nand({a.nand_inputs[0], a.nand_inputs[1]});
+      res.nand[1] = net.Not(res.nand[0]);
+    }
+
+    {
+      ScopeGuard g(net, "lut");
+      res.lut[0] = net.Mux(
+          a.lut_inputs[0],
+          /*a*/
+          net.Mux(a.lut_inputs[1], /*b*/ a.lut_bits[3], /*~b*/ a.lut_bits[2]),
+          /*~a*/
+          net.Mux(a.lut_inputs[1], /*b*/ a.lut_bits[1], /*~b*/ a.lut_bits[0]));
+      res.lut[1] = net.Not(res.lut[0]);
+    }
+
+    {
+      ScopeGuard g(net, "ff");
+      auto write_data = net.Mux(a.ff_inputs[1], a.ff_inputs[0], a.ff_inputs[0]);
+      res.ff = MakeDFlipFlop(net, write_data, a.clk, a.reset);
+      write_data.first->SetInput(3, res.ff[0]);
+    }
+
+    {
+      ScopeGuard g(net, "out");
+      res.out =
+          net.TriStateBuffer<1>(a.tri_state_inputs[0], a.tri_state_inputs[1]);
+    }
+
     return res;
   }
 };
-*/
 
 #endif  // FPGA_H__

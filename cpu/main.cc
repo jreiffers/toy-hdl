@@ -80,6 +80,8 @@ int main(int argc, char* argv[]) {
     net.DeclareOutput(DynGateReg({net.Mux(sel[0], a[0], b[0])}));
   } else if (mod == "decoder") {
     net.Build<Decoder>();
+  } else if (mod == "fpga_gates") {
+    net.Build<FpgaGates<4>>();
   } else {
     return print_usage();
   }
