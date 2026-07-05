@@ -15,6 +15,8 @@
 #include "cpu/compiler.h"
 #include "cpu/decoder.h"
 #include "cpu/export.h"
+#include "cpu/fpga.h"
+#include "cpu/fpga_mapping.h"
 #include "cpu/gate_lib.h"
 #include "cpu/register_file.h"
 #include "cpu/transistor_lib.h"
@@ -91,13 +93,44 @@ int main(int argc, char* argv[]) {
   CompileOpts opts;
   opts.avoid_transmission_gates = absl::GetFlag(FLAGS_avoid_transmission_gates);
   if (absl::GetFlag(FLAGS_fpga)) {
-    opts.fpga_spec = {.nor_arity = 4};
+    using F = FpgaResource;
+    opts.fpga_spec = {.resources =
+                          {
+                              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+                              {F::kNor, F::kNand, F::kNor, F::kNand, F::kNor},
+                              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+                              {F::kNand, F::kNor, F::kNand, F::kNor, F::kNand},
+                              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+                              {F::kNand, F::kNor, F::kNor, F::kNor, F::kNand},
+                              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+                              {F::kFF, F::kLut2, F::kNor, F::kLut2, F::kFF},
+                              {F::kOut, F::kOut, F::kOut, F::kOut, F::kOut},
+                          },
+                      .bus_width = 4,
+                      .nor_arity = 4};
     opts.avoid_transmission_gates = false;
   }
   auto transistor_net = Compile(net, opts);
 
   if (format == "gnet") {
-    print_graphviz(net);
+    absl::flat_hash_map<GateTerminal, std::string> gate_colors;
+    if (absl::GetFlag(FLAGS_fpga)) {
+      auto mapping = FpgaMapping::Map(*opts.fpga_spec, net);
+      std::vector<std::string> colors = {
+          "yellowgreen", "yellow",      "orange", "red",
+          "deeppink",    "purple",      "blue",   "cornflowerblue",
+          "aqua",        "springgreen", "green"};
+
+      for (int i = 0; i < std::min(colors.size(), mapping.chips.size()); ++i) {
+        for (auto t : mapping.chips[i].Signals()) {
+          if (t.first && t.first->kind() != GateKind::kNot) {
+            gate_colors[t] = colors[i];
+          }
+        }
+      }
+    }
+
+    print_graphviz(net, "", gate_colors);
   } else if (format == "tnet") {
     print_graphviz(transistor_net);
   } else if (format == "netlist") {

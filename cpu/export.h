@@ -12,7 +12,7 @@
 void print_graphviz(const Network& net);
 void print_graphviz(
     GateNetwork& net, std::string_view label = "",
-    const absl::flat_hash_map<GateTerminal, std::optional<bool>>& colors = {},
+    const absl::flat_hash_map<GateTerminal, std::string>& colors = {},
     std::ostream& stream = std::cout);
 void print_ngspice(const Network& net, NodeId out);
 

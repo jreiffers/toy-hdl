@@ -83,7 +83,7 @@ void print_graphviz(const Network& net) {
 
 void print_graphviz(
     GateNetwork& net, std::string_view label,
-    const absl::flat_hash_map<GateTerminal, std::optional<bool>>& colors,
+    const absl::flat_hash_map<GateTerminal, std::string>& colors,
     std::ostream& stream) {
   absl::flat_hash_map<Gate*, int> ids;
   auto terminal_node = [&](GateTerminal t) -> std::string {
@@ -118,17 +118,7 @@ void print_graphviz(
     auto color = colors.find(gate.output());
     if (color != colors.end()) {
       stream << std::string(d, ' ') << "style = \"filled\";\n";
-      stream << std::string(d, ' ') << "color = \"";
-      if (color->second) {
-        if (color->second.value()) {
-          stream << "blue";
-        } else {
-          stream << "red";
-        }
-      } else {
-        stream << "gray";
-      }
-      stream << "\";\n";
+      stream << std::string(d, ' ') << "color = \"" << color->second << "\";\n";
     }
     stream << std::string(d, ' ') << "label = \"" << to_string(gate) << "\";\n";
     for (int j = 0; j < gate.num_inputs(); ++j) {

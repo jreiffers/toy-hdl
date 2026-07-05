@@ -141,6 +141,14 @@ struct ChipBuilder {
     return "none";
   }
 
+  std::set<GateTerminal> Signals() {
+    std::set<GateTerminal> result;
+    for (auto [key, _] : terminals_) {
+      result.insert(key);
+    }
+    return result;
+  }
+
  private:
   // Adds `input` as an input to the chip if possible and it isn't already an
   // input. Returns true on success.

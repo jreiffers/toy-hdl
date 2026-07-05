@@ -226,12 +226,12 @@ absl::StatusOr<int> GateSpec<T, num_inputs>::Verify(GateNetwork& net) {
           static int counter = 0;
 
           std::ofstream s(absl::StrCat("/tmp/out", counter++, ".dot"));
-          absl::flat_hash_map<GateTerminal, std::optional<bool>> colors;
+          absl::flat_hash_map<GateTerminal, std::string> colors;
           for (auto [key, val] : gate_state) {
             if (val == GateTerminalState::kZ) {
-              colors[key] = std::nullopt;
+              colors[key] = "gray";
             } else {
-              colors[key] = val == GateTerminalState::kHigh;
+              colors[key] = val == GateTerminalState::kHigh ? "blue" : "red";
             }
           }
           print_graphviz(net, /*label=*/"", colors, s);

@@ -168,6 +168,8 @@ cc_binary(
         ":compiler",
         ":cpu_modules",
         ":eval",
+        ":fpga",
+        ":fpga_mapping",
         ":gate_lib",
         ":export",
         ":transistor_lib",
