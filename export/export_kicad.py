@@ -7,7 +7,7 @@ from absl import app
 from absl import flags
 import cpu.format_pb2 as s
 from skidl import *
-from util import group_transistors_by_hierarchy, open_net, normalize
+from util import group_transistors_by_hierarchy, open_net, normalize, emit_transistors
 import re
 
 FLAGS = flags.FLAGS
@@ -123,31 +123,7 @@ def generate(net):
 
     nets, header_nets = init_skidl_nets(net)
 
-    transistors = []
-
-    def emit_transistors(group, path='/'):
-        for (name, subgroup) in group["children"].items():
-            with SubCircuit(name):
-                emit_transistors(subgroup, path + name + '/')
-        for id, t in group["transistors"].items():
-            # TODO: Chip selection - if src is not vss/vdd, a CD4007 is probably needed.
-            if t.kind == s.Transistor.Kind.kNChannel:
-                transistor = n()
-            else:
-                transistor = p()
-
-            assert transistor["G"] is not None, transistor
-            assert transistor["S"] is not None, transistor
-            assert transistor["D"] is not None, transistor
-
-            transistor.tag = f'{path}/t{id}'
-            transistor.ref = f'Q{id}'
-            transistors.append(transistor)
-            nets[f"{id}.g"] = transistor["G"]
-            nets[f"{id}.s"] = transistor["S"]
-            nets[f"{id}.d"] = transistor["D"]
-
-    emit_transistors(group_transistors_by_hierarchy(net))
+    emit_transistors(n, p, group_transistors_by_hierarchy(net), nets)
 
     def get_net(name):
         assert name in nets, f'net {name} not found'

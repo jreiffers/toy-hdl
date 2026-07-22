@@ -1,18 +1,39 @@
 #ifndef FPGA_H__
 #define FPGA_H__
 
+#include "absl/types/span.h"
 #include "cpu/gate_lib.h"
 
 enum class FpgaResource {
-  kIn,    // 2
-  kNor,   // nor_arity * 2 + 2
-  kNand,  // 6
-  kLut2,  // 14
-  kFF,    // 12?
-  kOut,   // 12
-
-  // TODO add a couple muxes
+  kIn,
+  kNor,
+  kNand,
+  kLut2,
+  kFF,
+  kMux,
+  kOut,
 };
+
+absl::Span<const FpgaResource> AllFpgaResources();
+
+inline std::string to_string(FpgaResource resource) {
+  switch (resource) {
+    case FpgaResource::kIn:
+      return "input";
+    case FpgaResource::kNor:
+      return "nor";
+    case FpgaResource::kNand:
+      return "nand";
+    case FpgaResource::kLut2:
+      return "lut";
+    case FpgaResource::kFF:
+      return "flipflop";
+    case FpgaResource::kOut:
+      return "output";
+    case FpgaResource::kMux:
+      return "mux";
+  }
+}
 
 //
 struct FpgaSpec {
@@ -29,6 +50,8 @@ struct FpgaSpec {
         return 0;
       case FpgaResource::kNor:
         return nor_arity;
+      case FpgaResource::kMux:
+        return 3;
       default:
         return 2;
     }
@@ -57,6 +80,7 @@ struct FpgaGates {
     Ty<2> lut;
     Ty<2> ff;
     Ty<1> out;
+    Ty<2> mux;
   };
 
   template <template <int> class Ty>
@@ -71,6 +95,7 @@ struct FpgaGates {
     Ty<4> lut_bits;
     Ty<2> ff_inputs;
     Ty<2> tri_state_inputs;
+    Ty<3> mux_inputs;  // sel, hi, lo
   };
 
   static Outs<GateReg> Build(GateNetwork& net, const Args<GateReg>& a) {
@@ -120,6 +145,12 @@ struct FpgaGates {
       ScopeGuard g(net, "out");
       res.out =
           net.TriStateBuffer<1>(a.tri_state_inputs[0], a.tri_state_inputs[1]);
+    }
+
+    {
+      ScopeGuard g(net, "mux");
+      res.mux[0] = net.Mux(a.mux_inputs[0], a.mux_inputs[1], a.mux_inputs[2]);
+      res.mux[1] = net.Not(res.mux[0]);
     }
 
     return res;

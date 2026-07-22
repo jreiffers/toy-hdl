@@ -152,16 +152,30 @@ std::optional<GateTerminal> FindComplement(GateNetwork& net,
 }
 
 bool ChipBuilder::AddInput(GateNetwork& net, GateTerminal input,
-                           bool& was_added) {
-  was_added = false;
-  auto loc = terminals_.find(input);
-  if (loc != terminals_.end()) return true;
+                           int& use_count) {
+  if (!input_use_count_.contains(input) && terminals_.contains(input)) {
+    // Not an input.
+    use_count = 0;
+    return true;
+  }
+
+  if (input.first && input.first->kind() == GateKind::kNot) {
+    use_count = ++input_use_count_[input.first->input(0)];
+  } else {
+    use_count = ++input_use_count_[input];
+  }
+
+  if (use_count > 1) {
+    CHECK(terminals_.contains(input));
+    return true;
+  }
 
   auto& available = available_[FpgaResource::kIn];
+  // Modifying input use count before this is OK, returning false
+  // makes the builder invalid and it won't be used anymore.
   if (available.empty()) return false;
 
   auto input_loc = available.extract(available.begin()).value();
-  was_added = true;
 
   if (input.first && input.first->kind() == GateKind::kNot) {
     CHECK(!terminals_.contains(input.first->input(0)));
@@ -206,8 +220,8 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
   // TODO fix LUT2 and tri-state-buffer.
   for (int i = 0; i < gate.num_inputs(); ++i) {
     auto in = gate.input(i);
-    bool was_added = false;
-    if (!builder.AddInput(net, in, was_added)) return std::nullopt;
+    int use_count = 0;
+    if (!builder.AddInput(net, in, use_count)) return std::nullopt;
 
     auto cost_and_lane = builder.Route(gate.input(i), gate_loc);
     if (!cost_and_lane) return std::nullopt;
@@ -215,7 +229,14 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
     gate_node.inputs()[i] = cost_and_lane->second;
 
     total_cost += cost_and_lane->first;
-    if (was_added) total_cost += 4;  // arbitrary
+
+    if (use_count > 0) {
+      // Charge each use, but make subsequent uses cheaper. This
+      // might encourage the swap logic to cluster uses (i.e. if we
+      // have two chips that use an input 3 and 2 times respectively,
+      // the cost of that is larger than 4 + 1).
+      total_cost += 20 - use_count;  // arbitrary
+    }
   }
 
   // Maybe a bonus for sharing uses with gates already on the chip?
@@ -293,6 +314,15 @@ std::string ChipBuilder::to_ascii() const {
   return absl::StrJoin(rows, "\n");
 }
 
+std::string ChipBuilder::summary() const {
+  std::vector<std::string> parts;
+  for (auto res : AllFpgaResources()) {
+    parts.push_back(absl::StrCat(to_string(res), ": ", num_used(res), "/",
+                                 spec_->capacity(res)));
+  }
+  return absl::StrJoin(parts, ", ");
+}
+
 FpgaMapping FpgaMapping::Map(const FpgaSpec& spec, GateNetwork& net) {
   std::map<GlobalLaneId, GateTerminal> signals;
 
@@ -325,7 +355,8 @@ FpgaMapping FpgaMapping::Map(const FpgaSpec& spec, GateNetwork& net) {
 
       if (user->kind() == GateKind::kNot) {
         for (auto [not_user, _] : net.GetUsers(user->output())) {
-          if (not_user) ret.insert(not_user->output());
+          if (not_user && not_user->kind() != GateKind::kDead)
+            ret.insert(not_user->output());
         }
       } else if (user->kind() != GateKind::kDead) {
         ret.insert(user->output());
@@ -395,24 +426,63 @@ FpgaMapping FpgaMapping::Map(const FpgaSpec& spec, GateNetwork& net) {
       if (!cost_and_new_b) return std::nullopt;
       b = cost_and_new_b->second;
       sum_cost += cost_and_new_b->first;
+
+      bool has_outside_user =
+          absl::c_any_of(users(gate), [&](GateTerminal user) {
+            return !absl::c_linear_search(gates, user);
+          });
+
+      if (has_outside_user) {
+        sum_cost += 40;
+      }
+    }
+
+    // Charge each used gate, but charge each one less, except for
+    // inputs.
+    for (auto res : AllFpgaResources()) {
+      int used = b.num_used(res);
+      if (res == FpgaResource::kIn) {
+        // sum_cost += 5 * used * used;
+      } else {
+        sum_cost += 5 * used * (10 - used);
+      }
     }
 
     return {{sum_cost, b}};
+  };
+
+  auto check_plan =
+      [&](std::vector<GateTerminal> gates) -> std::optional<ChipPlan> {
+    std::sort(gates.begin(), gates.end(),
+              [&](GateTerminal lhs, GateTerminal rhs) {
+                return topo_index.at(lhs) < topo_index.at(rhs);
+              });
+
+    auto cost_and_b = try_build(gates);
+    if (!cost_and_b) return std::nullopt;
+
+    return {{cost_and_b->first, std::move(gates)}};
   };
 
   auto add_gate = [&](const ChipPlan& plan,
                       GateTerminal gate) -> std::optional<ChipPlan> {
     std::vector<GateTerminal> new_gates = plan.gates;
     new_gates.push_back(gate);
-    std::sort(new_gates.begin(), new_gates.end(),
-              [&](GateTerminal lhs, GateTerminal rhs) {
-                return topo_index.at(lhs) < topo_index.at(rhs);
-              });
+    return check_plan(std::move(new_gates));
+  };
 
-    auto cost_and_b = try_build(new_gates);
-    if (!cost_and_b) return std::nullopt;
-
-    return {{cost_and_b->first, new_gates}};
+  auto replace_gate =
+      [&](const ChipPlan& plan, GateTerminal to_remove,
+          std::optional<GateTerminal> to_add) -> std::optional<ChipPlan> {
+    auto new_gates = plan.gates;
+    auto it = std::find(new_gates.begin(), new_gates.end(), to_remove);
+    CHECK(it != new_gates.end());
+    if (to_add) {
+      *it = *to_add;
+    } else {
+      new_gates.erase(it);
+    }
+    return check_plan(std::move(new_gates));
   };
 
   ChipPlan empty{0, {}};
@@ -465,6 +535,100 @@ FpgaMapping FpgaMapping::Map(const FpgaSpec& spec, GateNetwork& net) {
 
     ++num_placed;
   }
+
+  std::cerr << "Costs:\n";
+  int sum = 0;
+  for (auto& plan : chips) {
+    std::cerr << "  " << plan.current_cost << "\n";
+    sum += plan.current_cost;
+  }
+  std::cerr << "total: " << sum << "\n";
+
+  // The placement algorithm is terrible. Try to swap gates and see if that
+  // gives us a better placement.
+  bool any_swap;
+  do {
+    any_swap = false;
+
+    for (auto& plan : chips) {
+      for (GateTerminal gate : plan.gates) {
+        bool swap_here = false;
+        for (auto [user, _] : users(gate)) {
+          if (!user) continue;
+          if (absl::c_contains(plan.gates, user->output())) continue;
+
+          ChipPlan* user_owner = nullptr;
+          auto user_owner_it =
+              std::find_if(chips.begin(), chips.end(), [&](ChipPlan& plan) {
+                return absl::c_contains(plan.gates, user->output());
+              });
+          CHECK(user_owner_it != chips.end())
+              << "Gate " << to_string(user->output())
+              << " not owned by anyone?";
+
+          // check if we can just take the user.
+          int current_cost = plan.current_cost + user_owner_it->current_cost;
+
+          auto take_plan = add_gate(plan, user->output());
+          if (take_plan) {
+            auto other_plan =
+                replace_gate(*user_owner_it, user->output(), std::nullopt);
+            if (other_plan) {
+              int new_cost = take_plan->current_cost + other_plan->current_cost;
+
+              if (new_cost < current_cost) {
+                plan = *take_plan;
+                *user_owner_it = *other_plan;
+                std::cerr << "steal: " << current_cost << " -> " << new_cost
+                          << "\n";
+                any_swap = true;
+                goto next_plan;
+              } else {
+                std::cerr << "steal failed: " << current_cost << " -> "
+                          << new_cost << "\n";
+              }
+            }
+          }
+
+          // otherwise, try a swap
+          for (auto to_replace : plan.gates) {
+            if (gate.first->kind() != user->kind()) continue;
+
+            auto repl_plan = replace_gate(plan, to_replace, user->output());
+            if (!repl_plan) continue;
+
+            auto repl_other_plan =
+                replace_gate(*user_owner_it, user->output(), to_replace);
+
+            if (!repl_other_plan) continue;
+
+            int new_cost =
+                repl_plan->current_cost + repl_other_plan->current_cost;
+
+            if (new_cost < current_cost) {
+              plan = *repl_plan;
+              *user_owner_it = *repl_other_plan;
+              std::cerr << "swap: " << current_cost << " -> " << new_cost
+                        << "\n";
+              any_swap = true;
+              goto next_plan;
+            }
+            std::cerr << "swap failed: " << current_cost << " -> " << new_cost
+                      << "\n";
+          }
+        }
+      }
+    next_plan:
+    }
+  } while (any_swap);
+
+  std::cerr << "Costs:\n";
+  sum = 0;
+  for (auto& plan : chips) {
+    std::cerr << "  " << plan.current_cost << "\n";
+    sum += plan.current_cost;
+  }
+  std::cerr << "total: " << sum << "\n";
 
   FpgaMapping mapping;
   for (const auto& plan : chips) {

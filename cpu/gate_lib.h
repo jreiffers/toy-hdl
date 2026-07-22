@@ -48,11 +48,29 @@ struct Gate {
   GateTerminal output(int index = 0) { return {this, index}; }
 
   int num_inputs() const { return inputs_.size(); }
+  int num_logical_inputs() const {
+    if (kind_ == GateKind::kLookup) {
+      return num_inputs() / 2;
+    }
+    if (kind_ == GateKind::kMux) {
+      return 3;
+    }
+    if (kind_ == GateKind::kTriStateBuffer) {
+      return 2;
+    }
+    return num_inputs();
+  }
   int num_outputs() const { return num_outputs_; }
   GateKind kind() const { return kind_; }
 
   absl::Span<const GateTerminal> inputs() { return inputs_; }
   GateTerminal input(int index) { return inputs_[index]; }
+  GateTerminal logical_input(int i) {
+    if (kind_ == GateKind::kMux || kind_ == GateKind::kTriStateBuffer) {
+      return input(i + (i > 0));
+    }
+    return input(i);
+  }
   void SetInput(int index, GateTerminal new_input);
 
   void ReplaceAllUsesWith(GateTerminal replacement, Gate* except = nullptr);

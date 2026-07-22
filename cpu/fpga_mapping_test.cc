@@ -34,7 +34,7 @@ TEST(ChipBuilderTest, SimpleNor) {
 
   auto placed = b.TryPlace(net, *nor.first);
   ASSERT_TRUE(placed.has_value());
-  EXPECT_EQ(placed->first, 23);
+  EXPECT_EQ(placed->first, 41);
 
   std::cerr << placed->second.to_ascii() << "\n";
   EXPECT_EQ(placed->second.to_ascii(), R"(
@@ -152,15 +152,14 @@ TEST(FpgaMappingTest, Test) {
   FpgaSpec spec{
       .resources =
           {
-              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
-              {F::kNor, F::kNand, F::kNor, F::kNand, F::kNor},
-              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
-              {F::kNand, F::kNor, F::kNand, F::kNor, F::kNand},
-              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
-              {F::kNand, F::kNor, F::kNor, F::kNor, F::kNand},
-              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
-              {F::kFF, F::kLut2, F::kNor, F::kLut2, F::kFF},
-              {F::kOut, F::kOut, F::kOut, F::kOut, F::kOut},
+              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+              {F::kNor, F::kNand, F::kNor, F::kNand, F::kNor, F::kNor},
+              //             {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+              {F::kNand, F::kNor, F::kNand, F::kNor, F::kNand, F::kNor},
+              {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+              {F::kNor, F::kNor, F::kNand, F::kNor, F::kNor, F::kLut2},
+              {F::kFF, F::kNor, F::kLut2, F::kNand, F::kLut2, F::kNor},
+              {F::kOut, F::kOut, F::kOut, F::kOut, F::kOut, F::kOut},
           },
       .bus_width = 4,
       .nor_arity = kNorArity,
@@ -168,7 +167,9 @@ TEST(FpgaMappingTest, Test) {
 
   auto mapping = FpgaMapping::Map(spec, net);
   for (auto& builder : mapping.chips) {
-    std::cerr << builder.to_ascii()
-              << "\nbottleneck: " << builder.bottleneck_resource() << "\n\n";
+    std::cerr << builder.to_ascii() << "\n\n";
+  }
+  for (auto& builder : mapping.chips) {
+    std::cerr << builder.summary() << "\n";
   }
 }

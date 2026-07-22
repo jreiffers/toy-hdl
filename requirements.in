@@ -1,4 +1,4 @@
 skidl
-kicad-python
+kicad-python==0.7.1
 disjoint-set==0.9.0
 scipy

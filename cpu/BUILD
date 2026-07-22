@@ -40,7 +40,11 @@ cc_library(
 cc_library(
     name = "fpga",
     hdrs = ["fpga.h"],
-    deps = [":gate_lib"],
+    srcs = ["fpga.cc"],
+    deps = [
+        "@abseil-cpp//absl/types:span",
+        ":gate_lib",
+    ],
 )
 
 cc_library(
@@ -63,6 +67,32 @@ cc_test(
     deps = [
         ":eval",
         ":fpga_mapping",
+        ":cpu_modules",
+        ":compiler",
+        ":gate_opt",
+        "@googletest//:gtest_main",
+        "@abseil-cpp//absl/status:status_matchers",
+    ],
+)
+
+cc_library(
+    name = "fpga_mapping_z3",
+    srcs = ["fpga_mapping_z3.cc"],
+    hdrs = ["fpga_mapping_z3.h"],
+    deps = [
+        ":fpga",
+        ":fpga_mapping",
+        "@z3//:z3_static",
+        "@abseil-cpp//absl/log",
+    ]
+)
+
+cc_test(
+    name = "fpga_mapping_z3_test",
+    srcs = ["fpga_mapping_z3_test.cc"],
+    deps = [
+        ":fpga_mapping_z3",
+        ":gate_lib",
         ":cpu_modules",
         ":compiler",
         ":gate_opt",

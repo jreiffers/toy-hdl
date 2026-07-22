@@ -22,6 +22,45 @@ py_binary(
 )
 
 py_binary(
+    name = "export_fpga",
+    srcs = ["export_fpga.py"],
+    deps = [
+        ":util",
+        "//cpu:format_py_proto",
+        "@abseil-py//absl/flags",
+        "@abseil-py//absl:app",
+        "@pip_deps//skidl",
+    ],
+    imports = ["."],
+)
+
+py_binary(
+    name = "place_fpga",
+    srcs = ["place_fpga.py"],
+    deps = [
+        ":util",
+        "//cpu:format_py_proto",
+        "@abseil-py//absl/flags",
+        "@abseil-py//absl:app",
+        "@pip_deps//kicad_python",
+    ],
+    imports = ["."],
+)
+
+py_binary(
+    name = "clone_fpga_traces",
+    srcs = ["clone_fpga_traces.py"],
+    deps = [
+        ":util",
+        "//cpu:format_py_proto",
+        "@abseil-py//absl/flags",
+        "@abseil-py//absl:app",
+        "@pip_deps//kicad_python",
+    ],
+    imports = ["."],
+)
+
+py_binary(
     name = "test",
     srcs = ["test.py"],
     deps = [

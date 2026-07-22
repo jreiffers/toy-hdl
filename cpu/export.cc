@@ -106,11 +106,11 @@ void print_graphviz(
   }
   net.WalkUnordered([&](int id, Gate& gate) {
     int d = 2;
-    for (const auto& scope : gate.scope()) {
-      stream << std::string(d, ' ') << "subgraph cluster_" << scope << " {\n";
-      stream << std::string(d, ' ') << "  label = \"" << scope << "\";\n";
-      d += 2;
-    }
+    // for (const auto& scope : gate.scope()) {
+    //   stream << std::string(d, ' ') << "subgraph cluster_" << scope << "
+    //   {\n"; stream << std::string(d, ' ') << "  label = \"" << scope <<
+    //   "\";\n"; d += 2;
+    // }
 
     stream << std::string(d, ' ') << "subgraph cluster_g" << id << " {\n";
     d += 2;

@@ -121,6 +121,7 @@ struct ChipBuilder {
         available_[r[col]].emplace(row, col);
       }
     }
+    for (auto res : AllFpgaResources()) available_[res];
   }
 
   ChipBuilder(const ChipBuilder& other) = default;
@@ -140,6 +141,10 @@ struct ChipBuilder {
     if (available_.at(FpgaResource::kNand).empty()) return "nand";
     return "none";
   }
+  std::string summary() const;
+  int num_used(FpgaResource res) const {
+    return spec_->capacity(res) - available_.at(res).size();
+  }
 
   std::set<GateTerminal> Signals() {
     std::set<GateTerminal> result;
@@ -152,7 +157,7 @@ struct ChipBuilder {
  private:
   // Adds `input` as an input to the chip if possible and it isn't already an
   // input. Returns true on success.
-  bool AddInput(GateNetwork& net, GateTerminal input, bool& was_added);
+  bool AddInput(GateNetwork& net, GateTerminal input, int& use_count);
   // Returns the cost of the route and the lane we reached (or nullopt if we
   // couldn't find a route).
   std::optional<std::pair<int, LocalLaneId>> Route(GateTerminal source,
@@ -165,6 +170,7 @@ struct ChipBuilder {
   std::map<FpgaResource, std::set<Coords>> available_;
   absl::flat_hash_map<GateTerminal, std::pair<Coords, int /* output ID */>>
       terminals_;
+  absl::flat_hash_map<GateTerminal, int> input_use_count_;
 
   // For each signal, the set of lanes that currently hold it.
   std::map<GateTerminal, std::set<GlobalLaneId>> signals_;
