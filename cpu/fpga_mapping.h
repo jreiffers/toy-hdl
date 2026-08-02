@@ -10,6 +10,12 @@
 #include "cpu/fpga.h"
 #include "cpu/gate_lib.h"
 
+struct GateCluster {
+  std::set<GateTerminal> inputs;
+  std::set<GateTerminal> gates;
+  std::set<GateTerminal> outputs;
+};
+
 enum class BusOrientation { kHorizontal, kVertical };
 
 inline BusOrientation operator!(BusOrientation o) {
@@ -109,16 +115,21 @@ struct FpgaChipConfig {
     return nodes_[coords.first][coords.second];
   }
 
+  std::string to_ascii() const;
+
  private:
+  const FpgaSpec* spec_;
   std::vector<std::vector<FpgaNode>> nodes_;
 };
 
 struct ChipBuilder {
-  explicit ChipBuilder(const FpgaSpec& spec) : spec_(&spec), config_(spec) {
+  explicit ChipBuilder(const FpgaSpec& spec, GateNetwork& net)
+      : spec_(&spec), config_(spec), net_(&net) {
     for (int row = 0; row < spec.resources.size(); ++row) {
       auto& r = spec.resources[row];
       for (int col = 0; col < r.size(); ++col) {
         available_[r[col]].emplace(row, col);
+        resources_at_locs_[{row, col}] = r[col];
       }
     }
     for (auto res : AllFpgaResources()) available_[res];
@@ -128,20 +139,12 @@ struct ChipBuilder {
 
   // Attempts to place the given gate on this chip. Returns the cost and a new
   // builder on success, or nullptr.
-  std::optional<std::pair<int, ChipBuilder>> TryPlace(GateNetwork& net,
-                                                      Gate& gate) const;
+  std::optional<std::pair<int, ChipBuilder>> TryPlace(
+      const GateCluster& cluster, GateNetwork& net, GateTerminal signal) const;
   bool has(GateTerminal terminal) const {
     return terminals_.contains(terminal);
   }
 
-  std::string to_ascii() const;
-  std::string bottleneck_resource() const {
-    if (available_.at(FpgaResource::kIn).empty()) return "input";
-    if (available_.at(FpgaResource::kNor).empty()) return "nor";
-    if (available_.at(FpgaResource::kNand).empty()) return "nand";
-    return "none";
-  }
-  std::string summary() const;
   int num_used(FpgaResource res) const {
     return spec_->capacity(res) - available_.at(res).size();
   }
@@ -154,77 +157,29 @@ struct ChipBuilder {
     return result;
   }
 
+  FpgaChipConfig Build() const;
+
  private:
-  // Adds `input` as an input to the chip if possible and it isn't already an
-  // input. Returns true on success.
-  bool AddInput(GateNetwork& net, GateTerminal input, int& use_count);
-  // Returns the cost of the route and the lane we reached (or nullopt if we
-  // couldn't find a route).
-  std::optional<std::pair<int, LocalLaneId>> Route(GateTerminal source,
-                                                   Coords dst);
+  // Returns the cost of the route.
+  std::optional<int> Route(GateTerminal source, Coords dst);
   std::set<Coords>& available(FpgaResource res) { return available_.at(res); }
 
   const FpgaSpec* spec_;
   FpgaChipConfig config_;
+  GateNetwork* net_;
   std::set<GlobalLaneId> used_lanes_;
   std::map<FpgaResource, std::set<Coords>> available_;
+  std::map<Coords, FpgaResource> resources_at_locs_;
+  std::map<Coords, GateTerminal> signal_defs_at_locs_;
   absl::flat_hash_map<GateTerminal, std::pair<Coords, int /* output ID */>>
       terminals_;
-  absl::flat_hash_map<GateTerminal, int> input_use_count_;
 
   // For each signal, the set of lanes that currently hold it.
   std::map<GateTerminal, std::set<GlobalLaneId>> signals_;
 };
 
-struct FpgaMapping {
-  // naively, we need 2 * 2 * bus_width * (#in + #out) pins per gate,
-  // since each connection uses two pins.
-  //
-  // we can do a lot better though, if we restrict connectivity a bit:
-  //   - it probably rarely makes sense to put the same signal on more than one
-  //   lane
-  //     exception: nor gates that aren't fully utilized, output buffers
-  //   - we might not need arbitrary horizontal/vertical lane connectivity
-  //
-  // since we know out and ~out are never connected to the same output,
-  // this can immediately be reduced to
-  //   2 * 1.5 * bus_width * #out
-  //
-  // normally, we don't have the same input on multiple pins either, with
-  // two important execptions:
-  //   - nor gates that don't use all inputs
-  //   - output buffers
-  //
-  // ignoring this for now, the same applies to inputs (e.g. in0 bus in1 in2 bus
-  // in3)
-  //
-  // 3 * bus_width * (#inputs + #outputs) pins per gate
-  //
-  // assuming 1.27mm pitch pin headers
-  // 72 for an arity 4 gate (2 x 4 x 9) -> about 2x5x11mm
-  // 48 for an arity 2 gate (2 x 4 x 6) -> about 2x5x8mm
-  //
-  // additionally, we need:
-  //
-  //   a small crossbar. we don't need n:m (4 * 6 pins -> 24), 1:1 is enough
-  //
-  //   e.g. 1:1ish
-  //
-  //          h1
-  //       h0 v1 h3
-  //    h1 v0 h2 v2 h1    13 pins
-  //       h3 v3 h0
-  //          h1
-  //
-  //   or h_i <-> v_i with very limited lane switching:
-  //
-  //   h0 v0 h1 v1 h2 v2 h3 v3    8 pins
-  //
-  //   passthroughs (2 x 2 x 4) -> 2 x 2.5mm x 5mm
-
-  std::vector<ChipBuilder> chips;
-
-  static FpgaMapping Map(const FpgaSpec& spec, GateNetwork& net);
-};
+std::optional<ChipBuilder> RouteCluster(const FpgaSpec& spec,
+                                        const GateCluster& cluster,
+                                        GateNetwork& net);
 
 #endif

@@ -49,7 +49,20 @@ TEST(ClusteringTest, SimpleNorOr) {
       .nor_arity = kNorArity,
   };
 
-  auto clusters = ClusterGates2(spec, net, 6);
+  std::cerr << "clustering...\n";
+  auto clusters = ClusterGates(spec, net, 8);
+
+  std::cerr << "routing...\n";
+  for (const auto& cluster : clusters) {
+    auto r = RouteCluster(spec, cluster, net);
+
+    if (r) {
+      std::cerr << "  success\n";
+      std::cerr << r->Build().to_ascii();
+    } else {
+      std::cerr << "  failure\n";
+    }
+  }
 
   absl::flat_hash_map<GateTerminal, std::string> gate_colors;
   std::vector<std::string> colors = {"yellowgreen", "yellow",         "orange",

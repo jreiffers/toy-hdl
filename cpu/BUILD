@@ -99,6 +99,7 @@ cc_test(
         "@googletest//:gtest_main",
         "@abseil-cpp//absl/status:status_matchers",
     ],
+    size = "enormous",
 )
 
 cc_library(

@@ -26,7 +26,7 @@ FpgaResource GetResource(GateTerminal terminal) {
   }
 }
 
-FpgaChipConfig::FpgaChipConfig(const FpgaSpec& spec) {
+FpgaChipConfig::FpgaChipConfig(const FpgaSpec& spec) : spec_(&spec) {
   for (auto& row : spec.resources) {
     nodes_.emplace_back();
     for (auto resource : row) {
@@ -35,13 +35,7 @@ FpgaChipConfig::FpgaChipConfig(const FpgaSpec& spec) {
   }
 }
 
-struct PinCoords {
-  Coords node_id;
-  int output_id;
-};
-
-std::optional<std::pair<int, LocalLaneId>> ChipBuilder::Route(
-    GateTerminal source, Coords target) {
+std::optional<int> ChipBuilder::Route(GateTerminal source, Coords target) {
   std::set<GlobalLaneId> seen = signals_[source];
   std::map<GlobalLaneId, std::function<std::optional<GlobalLaneId>()>>
       predecessors;
@@ -50,7 +44,7 @@ std::optional<std::pair<int, LocalLaneId>> ChipBuilder::Route(
   std::optional<GlobalLaneId> result_lane = std::nullopt;
   for (auto loc : seen) {
     if (loc.node == target) {
-      return {{0, loc.lane}};
+      return 0;
     }
   }
 
@@ -139,7 +133,7 @@ std::optional<std::pair<int, LocalLaneId>> ChipBuilder::Route(
     current = predecessors.at(*current)();
     ++cost;
   }
-  return {{cost, result_lane->lane}};
+  return cost;
 }
 
 std::optional<GateTerminal> FindComplement(GateNetwork& net,
@@ -151,100 +145,174 @@ std::optional<GateTerminal> FindComplement(GateNetwork& net,
   return std::nullopt;
 }
 
-bool ChipBuilder::AddInput(GateNetwork& net, GateTerminal input,
-                           int& use_count) {
-  if (!input_use_count_.contains(input) && terminals_.contains(input)) {
-    // Not an input.
-    use_count = 0;
-    return true;
-  }
-
-  if (input.first && input.first->kind() == GateKind::kNot) {
-    use_count = ++input_use_count_[input.first->input(0)];
-  } else {
-    use_count = ++input_use_count_[input];
-  }
-
-  if (use_count > 1) {
-    CHECK(terminals_.contains(input));
-    return true;
-  }
-
-  auto& available = available_[FpgaResource::kIn];
-  // Modifying input use count before this is OK, returning false
-  // makes the builder invalid and it won't be used anymore.
-  if (available.empty()) return false;
-
-  auto input_loc = available.extract(available.begin()).value();
-
-  if (input.first && input.first->kind() == GateKind::kNot) {
-    CHECK(!terminals_.contains(input.first->input(0)));
-
-    terminals_[input.first->input(0)] = {input_loc, 0};
-    terminals_[input] = {input_loc, 1};
-  } else {
-    terminals_[input] = {input_loc, 0};
-    // If we have the complement, set it up too.
-    if (auto nt = FindComplement(net, input)) {
-      terminals_[*nt] = {input_loc, 1};
-    }
-  }
-
-  return true;
-}
-
 std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
-    GateNetwork& net, Gate& gate) const {
-  CHECK(!has(gate.output()));
+    const GateCluster& cluster, GateNetwork& net, GateTerminal signal) const {
+  CHECK(!has(signal));
 
-  const auto& candidate_locs = available_.at(GetResource(gate.output()));
-  if (candidate_locs.empty()) return std::nullopt;
+  auto comp = FindComplement(net, signal);
 
-  auto builder = *this;
+  auto users = [&](GateTerminal terminal)
+      -> absl::flat_hash_set<std::pair<GateTerminal, GateTerminal>> {
+    absl::flat_hash_set<std::pair<GateTerminal, GateTerminal>> ret;
+    for (auto [user, _] : net.GetUsers(terminal)) {
+      if (!user) continue;
 
-  // TODO: could try all the possible locations and pick the cheapest one.
-  auto gate_loc = *candidate_locs.begin();
-  builder.available_[GetResource(gate.output())].erase(gate_loc);
-  auto& gate_node = builder.config_[gate_loc];
-  builder.terminals_[gate.output()] = {gate_loc, 0};
-  if (auto nt = FindComplement(net, gate.output())) {
-    builder.terminals_[*nt] = {gate_loc, 1};
-  }
+      if (user->kind() == GateKind::kNot) {
+        CHECK(comp);
+        for (auto [not_user, _] : net.GetUsers(user->output())) {
+          if (not_user && not_user->kind() != GateKind::kDead)
+            ret.insert({*comp, not_user->output()});
+        }
+      } else if (user->kind() != GateKind::kDead) {
+        ret.insert({signal, user->output()});
+      }
+    }
+    return ret;
+  };
 
-  // Each input is either already available, or we need an external input for
-  // it.
-  // TODO this will break with flipflops?
+  std::optional<std::pair<int, ChipBuilder>> ret = std::nullopt;
 
-  int total_cost = 0;
+  auto try_loc = [&](Coords loc) {
+    auto builder = *this;
 
-  // TODO fix LUT2 and tri-state-buffer.
-  for (int i = 0; i < gate.num_inputs(); ++i) {
-    auto in = gate.input(i);
-    int use_count = 0;
-    if (!builder.AddInput(net, in, use_count)) return std::nullopt;
+    auto dist = [&](Coords loc2) {
+      return std::abs(loc.first - loc2.first) +
+             std::abs(loc.second - loc2.second);
+    };
 
-    auto cost_and_lane = builder.Route(gate.input(i), gate_loc);
-    if (!cost_and_lane) return std::nullopt;
+    auto closest_output = [&]() {
+      std::optional<int> best_dist = std::nullopt;
+      Coords ret;
+      for (auto out_loc : builder.available_.at(FpgaResource::kOut)) {
+        auto here = dist(out_loc);
+        if (!best_dist || *best_dist > here) {
+          best_dist = here;
+          ret = out_loc;
+        }
+      }
+      CHECK(best_dist);
+      return ret;
+    };
 
-    gate_node.inputs()[i] = cost_and_lane->second;
+    CHECK(builder.available_.at(resources_at_locs_.at(loc)).erase(loc));
 
-    total_cost += cost_and_lane->first;
+    builder.terminals_[signal] = {loc, 0};
+    if (comp) {
+      builder.terminals_[*comp] = {loc, 1};
+    }
+    builder.signal_defs_at_locs_[loc] = signal;
 
-    if (use_count > 0) {
-      // Charge each use, but make subsequent uses cheaper. This
-      // might encourage the swap logic to cluster uses (i.e. if we
-      // have two chips that use an input 3 and 2 times respectively,
-      // the cost of that is larger than 4 + 1).
-      total_cost += 20 - use_count;  // arbitrary
+    int total_cost = 0;
+
+    // Route from the gate to each user in the cluster. If the gate is an
+    // output, also route to an output gate.
+    for (auto [used, user] : users(signal)) {
+      if (cluster.gates.contains(user)) {
+        auto cost = builder.Route(used, builder.terminals_.at(user).first);
+        if (!cost) {
+          return;
+        }
+        total_cost += *cost;
+      }
+    }
+
+    if (cluster.outputs.contains(signal) ||
+        (comp && cluster.outputs.contains(*comp))) {
+      auto out = closest_output();
+      CHECK(builder.available_.at(FpgaResource::kOut).erase(out));
+      builder.signal_defs_at_locs_[out] = signal;
+      // TODO route complement if it's an output
+      auto cost = builder.Route(signal, out);
+      // TODO maybe try other outputs
+      if (!cost) {
+        return;
+      }
+      total_cost += *cost;
+    }
+
+    if (!ret || ret->first > total_cost) {
+      ret = {total_cost, builder};
+    }
+  };
+
+  if (cluster.inputs.contains(signal)) {
+    for (auto loc : available_.at(FpgaResource::kIn)) {
+      try_loc(loc);
+    }
+  } else {
+    for (auto loc : available_.at(GetResource(signal))) {
+      try_loc(loc);
+    }
+    // TODO reserve LUTs if used and not placed yet.
+    if ((signal.first->kind() == GateKind::kNor ||
+         signal.first->kind() == GateKind::kNand) &&
+        signal.first->num_inputs() == 2) {
+      for (auto loc : available_.at(FpgaResource::kLut2)) {
+        try_loc(loc);
+      }
     }
   }
-
-  // Maybe a bonus for sharing uses with gates already on the chip?
-
-  return {{total_cost, builder}};
+  return ret;
 }
 
-std::string ChipBuilder::to_ascii() const {
+FpgaChipConfig ChipBuilder::Build() const {
+  auto ret = config_;
+
+  // Set up input/output bits.
+  for (auto [loc, signal] : signal_defs_at_locs_) {
+    auto find_signal = [&](GateTerminal signal) -> std::optional<LocalLaneId> {
+      if (!signals_.contains(signal)) {
+        return std::nullopt;
+      }
+      const auto& locs = signals_.at(signal);
+
+      for (auto gid : locs) {
+        if (gid.node == loc) return gid.lane;
+      }
+      return std::nullopt;
+    };
+
+    auto comp = FindComplement(*net_, signal);
+    auto res = resources_at_locs_.at(loc);
+    if (signal.first) {
+      CHECK(signal.first->kind() != GateKind::kNot);
+    } else {
+      CHECK(res == FpgaResource::kIn);
+    }
+    if (res == FpgaResource::kOut) {
+      std::optional<LocalLaneId> lane = find_signal(signal);
+      CHECK(lane);
+      ret[loc].inputs()[0] = *lane;
+    } else {
+      std::optional<LocalLaneId> lane = find_signal(signal);
+      std::optional<LocalLaneId> comp_lane = std::nullopt;
+      if (comp) {
+        comp_lane = find_signal(*comp);
+      }
+
+      // TODO tighten this CHECK
+      CHECK(lane || comp_lane);
+      if (lane) {
+        ret[loc].outputs()[0] = *lane;
+      }
+      if (comp_lane) {
+        ret[loc].outputs()[1] = *comp_lane;
+      }
+
+      if (res != FpgaResource::kIn) {
+        auto& gate = *signal.first;
+        for (int i = 0; i < gate.num_logical_inputs(); ++i) {
+          auto in_lane = find_signal(gate.logical_input(i));
+          CHECK(in_lane);
+          ret[loc].inputs()[i] = *in_lane;
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+std::string FpgaChipConfig::to_ascii() const {
   int bw = spec_->bus_width;
   int g = bw + 2;
   std::vector<std::string> rows(spec_->rows() * g,
@@ -252,7 +320,7 @@ std::string ChipBuilder::to_ascii() const {
 
   for (int r = 0; r < spec_->rows(); ++r) {
     for (int c = 0; c < spec_->cols(); ++c) {
-      const auto& node = config_[{r, c}];
+      const auto& node = (*this)[{r, c}];
 
       int r0 = r * g;
       int c0 = c * g;
@@ -314,331 +382,44 @@ std::string ChipBuilder::to_ascii() const {
   return absl::StrJoin(rows, "\n");
 }
 
-std::string ChipBuilder::summary() const {
-  std::vector<std::string> parts;
-  for (auto res : AllFpgaResources()) {
-    parts.push_back(absl::StrCat(to_string(res), ": ", num_used(res), "/",
-                                 spec_->capacity(res)));
-  }
-  return absl::StrJoin(parts, ", ");
-}
-
-FpgaMapping FpgaMapping::Map(const FpgaSpec& spec, GateNetwork& net) {
-  std::map<GlobalLaneId, GateTerminal> signals;
-
+std::optional<ChipBuilder> RouteCluster(const FpgaSpec& spec,
+                                        const GateCluster& cluster,
+                                        GateNetwork& net) {
   graph::TopoSort sort(net, net.all_inputs(), {net.sink()});
   std::map<GateTerminal, int> topo_index;
 
-  // Iterate over gates so we preferentially visit gates whose neighbors are
-  // already visited. If there are multiple with the same score, take the one
-  // with the most unvisited neighbors. This is not optimized at all.
-
-  absl::flat_hash_map<GateTerminal, std::pair<int, int>> visited_and_unvisited;
-  std::map<std::pair<int, int>, std::set<GateTerminal>> nodes_to_visit;
-
-  auto inputs = [&](Gate& gate) -> absl::flat_hash_set<GateTerminal> {
-    absl::flat_hash_set<GateTerminal> ret;
-    for (int i = 0; i < gate.num_inputs(); ++i) {
-      GateTerminal in = gate.input(i);
-      if (in.first && in.first->kind() == GateKind::kNot) {
-        in = in.first->input(0);
-      }
-      if (in.first) ret.insert(in);
-    }
-    return ret;
-  };
-
-  auto users = [&](GateTerminal terminal) -> absl::flat_hash_set<GateTerminal> {
-    absl::flat_hash_set<GateTerminal> ret;
-    for (auto [user, _] : net.GetUsers(terminal)) {
-      if (!user) continue;
-
-      if (user->kind() == GateKind::kNot) {
-        for (auto [not_user, _] : net.GetUsers(user->output())) {
-          if (not_user && not_user->kind() != GateKind::kDead)
-            ret.insert(not_user->output());
-        }
-      } else if (user->kind() != GateKind::kDead) {
-        ret.insert(user->output());
-      }
-    }
-    return ret;
-  };
-
-  std::cerr << "building topo index and maps.\n";
   for (auto terminal : sort.order(false, false)) {
     CHECK(terminal.first);
-    auto& gate = *terminal.first;
-
     // We don't visit NOT gates.
-    if (gate.kind() == GateKind::kNot) continue;
-
-    int index = topo_index.size();
-    topo_index[terminal] = index;
-
-    std::pair<int, int> key{0, -inputs(gate).size() - users(terminal).size()};
-    visited_and_unvisited[terminal] = key;
-    nodes_to_visit[key].insert(terminal);
+    if (terminal.first->kind() != GateKind::kNot) {
+      int index = topo_index.size();
+      topo_index[terminal] = index;
+    }
   }
 
-  auto increment_visited = [&](GateTerminal t) {
-    auto it = visited_and_unvisited.find(t);
-    // Already placed?
-    if (it == visited_and_unvisited.end()) return;
-    std::pair<int, int> current_key = it->second;
-    std::pair<int, int> new_key{current_key.first - 1, current_key.second};
+  ChipBuilder b(spec, net);
 
-    CHECK(nodes_to_visit[current_key].erase(t));
-    CHECK(nodes_to_visit[new_key].insert(t).second);
-    if (nodes_to_visit[current_key].empty()) {
-      nodes_to_visit.erase(current_key);
+  std::vector<GateTerminal> gates(cluster.gates.begin(), cluster.gates.end());
+  std::sort(gates.begin(), gates.end(),
+            [&](GateTerminal lhs, GateTerminal rhs) {
+              return topo_index.at(lhs) > topo_index.at(rhs);
+            });
+
+  for (auto signal : gates) {
+    auto cost_and_new_b = b.TryPlace(cluster, net, signal);
+    if (!cost_and_new_b) {
+      return std::nullopt;
     }
-    visited_and_unvisited[t] = new_key;
-  };
-
-  auto extract_next = [&]() {
-    CHECK(!nodes_to_visit.empty());
-    auto it = nodes_to_visit.begin();
-    auto& terminals = it->second;
-
-    CHECK(!terminals.empty());
-    auto terminal = terminals.extract(terminals.begin()).value();
-    if (terminals.empty()) {
-      nodes_to_visit.erase(it);
-    }
-    visited_and_unvisited.erase(terminal);
-
-    return terminal;
-  };
-
-  struct ChipPlan {
-    int current_cost;
-    std::vector<GateTerminal> gates;
-  };
-
-  auto try_build = [&](const std::vector<GateTerminal>& gates)
-      -> std::optional<std::pair<int, ChipBuilder>> {
-    int sum_cost = 0;
-    ChipBuilder b(spec);
-
-    for (auto gate : gates) {
-      auto cost_and_new_b = b.TryPlace(net, *gate.first);
-      if (!cost_and_new_b) return std::nullopt;
-      b = cost_and_new_b->second;
-      sum_cost += cost_and_new_b->first;
-
-      bool has_outside_user =
-          absl::c_any_of(users(gate), [&](GateTerminal user) {
-            return !absl::c_linear_search(gates, user);
-          });
-
-      if (has_outside_user) {
-        sum_cost += 40;
-      }
-    }
-
-    // Charge each used gate, but charge each one less, except for
-    // inputs.
-    for (auto res : AllFpgaResources()) {
-      int used = b.num_used(res);
-      if (res == FpgaResource::kIn) {
-        // sum_cost += 5 * used * used;
-      } else {
-        sum_cost += 5 * used * (10 - used);
-      }
-    }
-
-    return {{sum_cost, b}};
-  };
-
-  auto check_plan =
-      [&](std::vector<GateTerminal> gates) -> std::optional<ChipPlan> {
-    std::sort(gates.begin(), gates.end(),
-              [&](GateTerminal lhs, GateTerminal rhs) {
-                return topo_index.at(lhs) < topo_index.at(rhs);
-              });
-
-    auto cost_and_b = try_build(gates);
-    if (!cost_and_b) return std::nullopt;
-
-    return {{cost_and_b->first, std::move(gates)}};
-  };
-
-  auto add_gate = [&](const ChipPlan& plan,
-                      GateTerminal gate) -> std::optional<ChipPlan> {
-    std::vector<GateTerminal> new_gates = plan.gates;
-    new_gates.push_back(gate);
-    return check_plan(std::move(new_gates));
-  };
-
-  auto replace_gate =
-      [&](const ChipPlan& plan, GateTerminal to_remove,
-          std::optional<GateTerminal> to_add) -> std::optional<ChipPlan> {
-    auto new_gates = plan.gates;
-    auto it = std::find(new_gates.begin(), new_gates.end(), to_remove);
-    CHECK(it != new_gates.end());
-    if (to_add) {
-      *it = *to_add;
-    } else {
-      new_gates.erase(it);
-    }
-    return check_plan(std::move(new_gates));
-  };
-
-  ChipPlan empty{0, {}};
-  std::vector<ChipPlan> chips;
-
-  int num_placed = 0;
-  while (!nodes_to_visit.empty()) {
-    auto terminal = extract_next();
-    std::cerr << "processing gate " << to_string(terminal) << "\n";
-    auto* gate = terminal.first;
-
-    // Find the chip that can accomodate this gate with the lowest cost. If none
-    // exists, allocate a new one.
-    int best_chip_index = 0;
-    int best_incremental_cost = 0;
-    std::optional<ChipPlan> best_plan;
-
-    for (int chip = 0; chip < chips.size(); ++chip) {
-      std::optional<ChipPlan> new_plan = add_gate(chips[chip], terminal);
-      if (!new_plan) continue;
-
-      int incremental_cost = new_plan->current_cost - chips[chip].current_cost;
-      if (!best_plan || best_incremental_cost > incremental_cost) {
-        best_plan = new_plan;
-        best_incremental_cost = incremental_cost;
-        best_chip_index = chip;
-      }
-    }
-
-    if (best_plan) {
-      std::cerr << "  fit gate on chip " << best_chip_index << "\n";
-      chips[best_chip_index] = *best_plan;
-    } else {
-      std::cerr << "  no chip found - starting a new one\n";
-      auto new_plan = add_gate(empty, terminal);
-      CHECK(new_plan) << "Failed to place the first gate?";
-      chips.push_back(*new_plan);
-    }
-
-    std::cerr << "  updating visit counters\n";
-
-    for (GateTerminal in : inputs(*gate)) {
-      std::cerr << "  input " << to_string(in) << "\n";
-      increment_visited(in);
-    }
-    for (GateTerminal out : users(gate->output())) {
-      std::cerr << "  output " << to_string(out) << "\n";
-      increment_visited(out);
-    }
-
-    ++num_placed;
+    b = cost_and_new_b->second;
   }
 
-  std::cerr << "Costs:\n";
-  int sum = 0;
-  for (auto& plan : chips) {
-    std::cerr << "  " << plan.current_cost << "\n";
-    sum += plan.current_cost;
-  }
-  std::cerr << "total: " << sum << "\n";
-
-  // The placement algorithm is terrible. Try to swap gates and see if that
-  // gives us a better placement.
-  bool any_swap;
-  do {
-    any_swap = false;
-
-    for (auto& plan : chips) {
-      for (GateTerminal gate : plan.gates) {
-        bool swap_here = false;
-        for (auto [user, _] : users(gate)) {
-          if (!user) continue;
-          if (absl::c_contains(plan.gates, user->output())) continue;
-
-          ChipPlan* user_owner = nullptr;
-          auto user_owner_it =
-              std::find_if(chips.begin(), chips.end(), [&](ChipPlan& plan) {
-                return absl::c_contains(plan.gates, user->output());
-              });
-          CHECK(user_owner_it != chips.end())
-              << "Gate " << to_string(user->output())
-              << " not owned by anyone?";
-
-          // check if we can just take the user.
-          int current_cost = plan.current_cost + user_owner_it->current_cost;
-
-          auto take_plan = add_gate(plan, user->output());
-          if (take_plan) {
-            auto other_plan =
-                replace_gate(*user_owner_it, user->output(), std::nullopt);
-            if (other_plan) {
-              int new_cost = take_plan->current_cost + other_plan->current_cost;
-
-              if (new_cost < current_cost) {
-                plan = *take_plan;
-                *user_owner_it = *other_plan;
-                std::cerr << "steal: " << current_cost << " -> " << new_cost
-                          << "\n";
-                any_swap = true;
-                goto next_plan;
-              } else {
-                std::cerr << "steal failed: " << current_cost << " -> "
-                          << new_cost << "\n";
-              }
-            }
-          }
-
-          // otherwise, try a swap
-          for (auto to_replace : plan.gates) {
-            if (gate.first->kind() != user->kind()) continue;
-
-            auto repl_plan = replace_gate(plan, to_replace, user->output());
-            if (!repl_plan) continue;
-
-            auto repl_other_plan =
-                replace_gate(*user_owner_it, user->output(), to_replace);
-
-            if (!repl_other_plan) continue;
-
-            int new_cost =
-                repl_plan->current_cost + repl_other_plan->current_cost;
-
-            if (new_cost < current_cost) {
-              plan = *repl_plan;
-              *user_owner_it = *repl_other_plan;
-              std::cerr << "swap: " << current_cost << " -> " << new_cost
-                        << "\n";
-              any_swap = true;
-              goto next_plan;
-            }
-            std::cerr << "swap failed: " << current_cost << " -> " << new_cost
-                      << "\n";
-          }
-        }
-      }
-    next_plan:
+  for (auto in : cluster.inputs) {
+    auto cost_and_new_b = b.TryPlace(cluster, net, in);
+    if (!cost_and_new_b) {
+      return std::nullopt;
     }
-  } while (any_swap);
-
-  std::cerr << "Costs:\n";
-  sum = 0;
-  for (auto& plan : chips) {
-    std::cerr << "  " << plan.current_cost << "\n";
-    sum += plan.current_cost;
-  }
-  std::cerr << "total: " << sum << "\n";
-
-  FpgaMapping mapping;
-  for (const auto& plan : chips) {
-    auto cost_and_b = try_build(plan.gates);
-    CHECK(cost_and_b);
-    mapping.chips.push_back(cost_and_b->second);
+    b = cost_and_new_b->second;
   }
 
-  std::cerr << "using " << chips.size() << " chips for " << num_placed
-            << " gates.\n";
-
-  return mapping;
+  return b;
 }
