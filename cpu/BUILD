@@ -52,8 +52,10 @@ cc_library(
     srcs = ["fpga_mapping.cc"],
     hdrs = ["fpga_mapping.h"],
     deps = [
+        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:linked_hash_map",
         "@abseil-cpp//absl/container:linked_hash_set",
+        "@abseil-cpp//absl/container:inlined_vector",
         ":gate_lib",
         ":fpga",
         ":graph",

@@ -1,5 +1,6 @@
 #include "cpu/fpga_mapping.h"
 
+#include <algorithm>
 #include <deque>
 #include <vector>
 
@@ -7,23 +8,34 @@
 #include "absl/strings/str_join.h"
 #include "cpu/graph.h"
 
-FpgaResource GetResource(GateTerminal terminal) {
-  if (!terminal.first) {
-    return FpgaResource::kIn;
-  }
+namespace {
 
-  switch (terminal.first->kind()) {
+absl::InlinedVector<FpgaResource, 2> GetResources(GateKind type, int arity) {
+  switch (type) {
     case GateKind::kTriStateBuffer:
-      return FpgaResource::kOut;
+      return {FpgaResource::kOut};
     case GateKind::kNand:
-      return FpgaResource::kNand;
+      CHECK_EQ(arity, 2);
+      return {FpgaResource::kNand, FpgaResource::kLut2};
     case GateKind::kNor:
-      return FpgaResource::kNor;
+      if (arity == 2) {
+        return {FpgaResource::kNor, FpgaResource::kLut2};
+      }
+      return {FpgaResource::kNor};
     case GateKind::kLookup:
-      return FpgaResource::kLut2;
+      CHECK_EQ(arity, 2);
+      return {FpgaResource::kLut2};
     default:
       CHECK(false);
   }
+}
+
+}  // namespace
+
+absl::InlinedVector<FpgaResource, 2> GetResources(GateTerminal terminal) {
+  if (!terminal.first) return {FpgaResource::kIn};
+  return GetResources(terminal.first->kind(),
+                      terminal.first->num_logical_inputs());
 }
 
 FpgaChipConfig::FpgaChipConfig(const FpgaSpec& spec) : spec_(&spec) {
@@ -145,11 +157,30 @@ std::optional<GateTerminal> FindComplement(GateNetwork& net,
   return std::nullopt;
 }
 
+bool ChipBuilder::CheckCapacity() {
+  int nands = todo_[GetResources(GateKind::kNand, 2)];
+  int nors = todo_[GetResources(GateKind::kNor, 2)];
+  int fixed_nors = todo_[GetResources(GateKind::kNor, 3)];
+  int fixed_luts = todo_[GetResources(GateKind::kLookup, 2)];
+  int rem_nands = available_.at(FpgaResource::kNand).size();
+  int rem_nors = available_.at(FpgaResource::kNor).size();
+  int rem_luts = available_.at(FpgaResource::kLut2).size();
+  int used_luts = fixed_luts + std::max(0, nands - rem_nands) +
+                  std::max(0, nors - (rem_nors - fixed_nors));
+  return fixed_nors <= rem_nors && used_luts <= rem_luts;
+}
+
 std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
-    const GateCluster& cluster, GateNetwork& net, GateTerminal signal) const {
+    GateTerminal signal) const {
+  const auto& cluster = *cluster_;
+  auto& net = *net_;
   CHECK(!has(signal));
 
   auto comp = FindComplement(net, signal);
+  const auto resource_types =
+      cluster.inputs.contains(signal)
+          ? absl::InlinedVector<FpgaResource, 2>{FpgaResource::kIn}
+          : GetResources(signal);
 
   auto users = [&](GateTerminal terminal)
       -> absl::linked_hash_set<std::pair<GateTerminal, GateTerminal>> {
@@ -174,6 +205,9 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
 
   auto try_loc = [&](Coords loc) {
     auto builder = *this;
+    CHECK(builder.available_.at(resources_at_locs_.at(loc)).erase(loc));
+    --builder.todo_.at(resource_types);
+    if (!builder.CheckCapacity()) return;
 
     auto dist = [&](Coords loc2) {
       return std::abs(loc.first - loc2.first) +
@@ -193,8 +227,6 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
       CHECK(best_dist);
       return ret;
     };
-
-    CHECK(builder.available_.at(resources_at_locs_.at(loc)).erase(loc));
 
     builder.terminals_[signal] = {loc, 0};
     if (comp) {
@@ -221,7 +253,8 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
       auto out = closest_output();
       CHECK(builder.available_.at(FpgaResource::kOut).erase(out));
       builder.signal_defs_at_locs_[out] = signal;
-      // TODO route complement if it's an output
+      // TODO route complement if it's a network output (not just a cluster
+      // output)
       auto cost = builder.Route(signal, out);
       // TODO maybe try other outputs
       if (!cost) {
@@ -235,22 +268,8 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
     }
   };
 
-  if (cluster.inputs.contains(signal)) {
-    for (auto loc : available_.at(FpgaResource::kIn)) {
-      try_loc(loc);
-    }
-  } else {
-    for (auto loc : available_.at(GetResource(signal))) {
-      try_loc(loc);
-    }
-    // TODO reserve LUTs if used and not placed yet.
-    if ((signal.first->kind() == GateKind::kNor ||
-         signal.first->kind() == GateKind::kNand) &&
-        signal.first->num_inputs() == 2) {
-      for (auto loc : available_.at(FpgaResource::kLut2)) {
-        try_loc(loc);
-      }
-    }
+  for (auto resource : resource_types) {
+    for (auto loc : available_.at(resource)) try_loc(loc);
   }
   return ret;
 }
@@ -397,7 +416,7 @@ std::optional<ChipBuilder> RouteCluster(const FpgaSpec& spec,
     }
   }
 
-  ChipBuilder b(spec, net);
+  ChipBuilder b(spec, cluster, net);
 
   std::vector<GateTerminal> gates(cluster.gates.begin(), cluster.gates.end());
   std::sort(gates.begin(), gates.end(),
@@ -406,7 +425,7 @@ std::optional<ChipBuilder> RouteCluster(const FpgaSpec& spec,
             });
 
   for (auto signal : gates) {
-    auto cost_and_new_b = b.TryPlace(cluster, net, signal);
+    auto cost_and_new_b = b.TryPlace(signal);
     if (!cost_and_new_b) {
       return std::nullopt;
     }
@@ -414,7 +433,7 @@ std::optional<ChipBuilder> RouteCluster(const FpgaSpec& spec,
   }
 
   for (auto in : cluster.inputs) {
-    auto cost_and_new_b = b.TryPlace(cluster, net, in);
+    auto cost_and_new_b = b.TryPlace(in);
     if (!cost_and_new_b) {
       return std::nullopt;
     }

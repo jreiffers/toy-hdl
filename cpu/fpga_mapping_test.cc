@@ -52,6 +52,28 @@ TEST(RouteClusterTest, SimpleNor) {
         ..  ..  ..)");
 }
 
+TEST(RouteClusterTest, ReserveLut) {
+  GateNetwork net;
+  auto in = net.AddInput<2>();
+  auto lookup = net.Xor(in[0], in[1]);
+  auto nor = net.Nor({lookup, in[0]});
+  net.DeclareOutput(nor);
+  FpgaSpec spec{.resources = {{F::kIn, F::kIn},
+                              {F::kLut2, F::kNor},
+                              {F::kOut, F::kNand}},
+                .bus_width = 4,
+                .nor_arity = 4};
+  GateCluster cluster{
+      .inputs = {in[0], in[1]}, .gates = {lookup, nor}, .outputs = {nor}};
+  // If we didn't reserve the lut, we'd place the nor in its slot (because
+  // it's closer to the output), causing routing to fail.
+  auto routed = RouteCluster(spec, cluster, net);
+  ASSERT_TRUE(routed);
+  EXPECT_EQ(routed->num_used(F::kLut2), 1);
+  EXPECT_EQ(routed->num_used(F::kNor), 1);
+  routed->Build();
+}
+
 TEST(RouteClusterTest, NorIntoNand) {
   GateNetwork net;
   auto in = net.AddInput<3>();

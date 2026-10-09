@@ -5,6 +5,8 @@
 #include <deque>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/container/linked_hash_map.h"
 #include "absl/container/linked_hash_set.h"
 #include "absl/types/span.h"
@@ -16,6 +18,8 @@ struct GateCluster {
   absl::linked_hash_set<GateTerminal> gates;
   absl::linked_hash_set<GateTerminal> outputs;
 };
+
+absl::InlinedVector<FpgaResource, 2> GetResources(GateTerminal terminal);
 
 enum class BusOrientation { kHorizontal, kVertical };
 
@@ -124,8 +128,9 @@ struct FpgaChipConfig {
 };
 
 struct ChipBuilder {
-  explicit ChipBuilder(const FpgaSpec& spec, GateNetwork& net)
-      : spec_(&spec), config_(spec), net_(&net) {
+  ChipBuilder(const FpgaSpec& spec, const GateCluster& cluster,
+              GateNetwork& net)
+      : spec_(&spec), config_(spec), net_(&net), cluster_(&cluster) {
     for (int row = 0; row < spec.resources.size(); ++row) {
       auto& r = spec.resources[row];
       for (int col = 0; col < r.size(); ++col) {
@@ -134,14 +139,16 @@ struct ChipBuilder {
       }
     }
     for (auto res : AllFpgaResources()) available_[res];
+    for (auto terminal : cluster.gates) ++todo_[GetResources(terminal)];
+    todo_[{FpgaResource::kIn}] = cluster.inputs.size();
   }
 
   ChipBuilder(const ChipBuilder& other) = default;
 
   // Attempts to place the given gate on this chip. Returns the cost and a new
-  // builder on success, or nullptr.
+  // builder on success, or nullopt.
   std::optional<std::pair<int, ChipBuilder>> TryPlace(
-      const GateCluster& cluster, GateNetwork& net, GateTerminal signal) const;
+      GateTerminal signal) const;
   bool has(GateTerminal terminal) const {
     return terminals_.contains(terminal);
   }
@@ -161,6 +168,7 @@ struct ChipBuilder {
   FpgaChipConfig Build() const;
 
  private:
+  bool CheckCapacity();
   // Returns the cost of the route.
   std::optional<int> Route(GateTerminal source, Coords dst);
   std::set<Coords>& available(FpgaResource res) { return available_.at(res); }
@@ -168,6 +176,8 @@ struct ChipBuilder {
   const FpgaSpec* spec_;
   FpgaChipConfig config_;
   GateNetwork* net_;
+  const GateCluster* cluster_;
+  absl::flat_hash_map<absl::InlinedVector<FpgaResource, 2>, int> todo_;
   std::set<GlobalLaneId> used_lanes_;
   std::map<FpgaResource, std::set<Coords>> available_;
   std::map<Coords, FpgaResource> resources_at_locs_;
