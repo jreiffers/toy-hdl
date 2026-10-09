@@ -52,12 +52,13 @@ cc_library(
     srcs = ["fpga_mapping.cc"],
     hdrs = ["fpga_mapping.h"],
     deps = [
+        "@abseil-cpp//absl/container:linked_hash_map",
+        "@abseil-cpp//absl/container:linked_hash_set",
         ":gate_lib",
         ":fpga",
         ":graph",
         "@abseil-cpp//absl/types:span",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -67,6 +68,7 @@ cc_test(
     deps = [
         ":eval",
         ":fpga_mapping",
+        ":fpga_mapping_z3",
         ":cpu_modules",
         ":compiler",
         ":gate_opt",
@@ -80,6 +82,7 @@ cc_library(
     srcs = ["fpga_mapping_z3.cc"],
     hdrs = ["fpga_mapping_z3.h"],
     deps = [
+        "@abseil-cpp//absl/container:linked_hash_map",
         ":fpga",
         ":fpga_mapping",
         "@z3//:z3_static",
@@ -107,6 +110,8 @@ cc_library(
     srcs = ["gate_lib.cc"],
     hdrs = ["gate_lib.h"],
     deps = [
+      "@abseil-cpp//absl/container:linked_hash_map",
+      "@abseil-cpp//absl/container:linked_hash_set",
       "@abseil-cpp//absl/container:inlined_vector",
       "@abseil-cpp//absl/strings",
       "@reflect_cpp//:reflect_cpp",
@@ -200,7 +205,7 @@ cc_binary(
         ":cpu_modules",
         ":eval",
         ":fpga",
-        ":fpga_mapping",
+        ":fpga_mapping_z3",
         ":gate_lib",
         ":export",
         ":transistor_lib",

@@ -5,15 +5,16 @@
 #include <deque>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/linked_hash_map.h"
+#include "absl/container/linked_hash_set.h"
 #include "absl/types/span.h"
 #include "cpu/fpga.h"
 #include "cpu/gate_lib.h"
 
 struct GateCluster {
-  std::set<GateTerminal> inputs;
-  std::set<GateTerminal> gates;
-  std::set<GateTerminal> outputs;
+  absl::linked_hash_set<GateTerminal> inputs;
+  absl::linked_hash_set<GateTerminal> gates;
+  absl::linked_hash_set<GateTerminal> outputs;
 };
 
 enum class BusOrientation { kHorizontal, kVertical };
@@ -149,8 +150,8 @@ struct ChipBuilder {
     return spec_->capacity(res) - available_.at(res).size();
   }
 
-  std::set<GateTerminal> Signals() {
-    std::set<GateTerminal> result;
+  absl::linked_hash_set<GateTerminal> Signals() {
+    absl::linked_hash_set<GateTerminal> result;
     for (auto [key, _] : terminals_) {
       result.insert(key);
     }
@@ -171,7 +172,7 @@ struct ChipBuilder {
   std::map<FpgaResource, std::set<Coords>> available_;
   std::map<Coords, FpgaResource> resources_at_locs_;
   std::map<Coords, GateTerminal> signal_defs_at_locs_;
-  absl::flat_hash_map<GateTerminal, std::pair<Coords, int /* output ID */>>
+  absl::linked_hash_map<GateTerminal, std::pair<Coords, int /* output ID */>>
       terminals_;
 
   // For each signal, the set of lanes that currently hold it.

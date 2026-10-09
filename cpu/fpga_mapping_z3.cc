@@ -14,10 +14,11 @@ struct GateIndex {
   explicit GateIndex(GateNetwork& net);
 
   std::vector<GateTerminal> terminals;
-  absl::flat_hash_map<FpgaResource, std::vector<int>> terminal_indices_by_type;
-  absl::flat_hash_map<GateTerminal, int> terminal_ids;
+  absl::linked_hash_map<FpgaResource, std::vector<int>>
+      terminal_indices_by_type;
+  absl::linked_hash_map<GateTerminal, int> terminal_ids;
 
-  absl::flat_hash_map<GateTerminal, std::set<int>> users;
+  absl::linked_hash_map<GateTerminal, std::set<int>> users;
 
   std::vector<int> input_ids;
   std::vector<int> non_input_ids;
@@ -236,7 +237,7 @@ std::vector<GateCluster> ClusterGates(const FpgaSpec& spec, GateNetwork& net,
   std::vector<GateCluster> out(max_clusters);
 
   std::vector<int> clusters_for_terminal_ids;
-  absl::flat_hash_map<GateTerminal, int> clusters_for_terminals;
+  absl::linked_hash_map<GateTerminal, int> clusters_for_terminals;
 
   for (int i = 0; i < cluster.size(); ++i) {
     int c = m.eval(cluster[i]).get_numeral_int();

@@ -239,9 +239,9 @@ void GateNetwork::WalkUnordered(
   }
 }
 
-const std::unordered_set<GateUse>& GateNetwork::GetUsers(
+const absl::linked_hash_set<GateUse>& GateNetwork::GetUsers(
     GateTerminal terminal) const {
-  static auto& kNone = *new std::unordered_set<GateUse>();
+  static auto& kNone = *new absl::linked_hash_set<GateUse>();
   auto it = uses_.find(terminal);
   if (it == uses_.end()) return kNone;
   return it->second;

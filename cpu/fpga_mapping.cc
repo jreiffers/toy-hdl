@@ -152,8 +152,8 @@ std::optional<std::pair<int, ChipBuilder>> ChipBuilder::TryPlace(
   auto comp = FindComplement(net, signal);
 
   auto users = [&](GateTerminal terminal)
-      -> absl::flat_hash_set<std::pair<GateTerminal, GateTerminal>> {
-    absl::flat_hash_set<std::pair<GateTerminal, GateTerminal>> ret;
+      -> absl::linked_hash_set<std::pair<GateTerminal, GateTerminal>> {
+    absl::linked_hash_set<std::pair<GateTerminal, GateTerminal>> ret;
     for (auto [user, _] : net.GetUsers(terminal)) {
       if (!user) continue;
 

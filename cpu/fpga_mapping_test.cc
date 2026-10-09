@@ -7,6 +7,7 @@
 #include "cpu/compiler.h"
 #include "cpu/decoder.h"
 #include "cpu/eval.h"
+#include "cpu/fpga_mapping_z3.h"
 #include "cpu/gate_opt.h"
 
 using F = FpgaResource;
@@ -24,121 +25,126 @@ FpgaSpec SmallSpec() {
   };
 }
 
-TEST(ChipBuilderTest, SimpleNor) {
+TEST(RouteClusterTest, SimpleNor) {
   GateNetwork net;
   auto in = net.AddInput<3>();
   auto nor = net.Nor({in[0], in[1], in[2]});
 
   auto spec = SmallSpec();
-  ChipBuilder b(spec);
 
-  auto placed = b.TryPlace(net, *nor.first);
+  GateCluster cluster{
+      .inputs = {in[0], in[1], in[2]}, .gates = {nor}, .outputs = {nor}};
+  auto placed = RouteCluster(spec, cluster, net);
   ASSERT_TRUE(placed.has_value());
-  EXPECT_EQ(placed->first, 41);
 
-  std::cerr << placed->second.to_ascii() << "\n";
-  EXPECT_EQ(placed->second.to_ascii(), R"(
-        A       A
-        .+-A..  ..
+  std::cerr << placed->Build().to_ascii() << "\n";
+  EXPECT_EQ(placed->Build().to_ascii(), R"(
+         A  A   A
         ..  ..  ..
-        ||      |
-        ab      |
+        ..  ..  ..
+         |  |   |
+        Aa  |   |
+       b..--+.  ..
        c..--..--+.
-        ..  ..  ..
-
-
+        |
+        a
         ..  ..  ..
         ..  ..  ..)");
 }
 
-TEST(ChipBuilderTest, NorIntoNand) {
+TEST(RouteClusterTest, NorIntoNand) {
   GateNetwork net;
   auto in = net.AddInput<3>();
   auto nor = net.Nor({in[0], in[1], in[2]});
   auto nand = net.Nand({nor, in[2]});
 
   auto spec = SmallSpec();
-  ChipBuilder b(spec);
 
-  auto placed = b.TryPlace(net, *nor.first);
-  ASSERT_TRUE(placed.has_value());
-  placed = placed->second.TryPlace(net, *nand.first);
+  GateCluster cluster{
+      .inputs = {in[0], in[1], in[2]}, .gates = {nor, nand}, .outputs = {nand}};
+  auto placed = RouteCluster(spec, cluster, net);
   ASSERT_TRUE(placed.has_value());
 
-  std::cerr << placed->second.to_ascii() << "\n";
-  EXPECT_EQ(placed->second.to_ascii(), R"(
+  std::cerr << placed->Build().to_ascii() << "\n";
+  EXPECT_EQ(placed->Build().to_ascii(), R"(
         A       A
         .+-A..  ..
         ..  ..  ..
         ||      |
-        ab      |
-       c..-b..--+.
+        ab  A   |
        A..-a..  ..
-
-
+       c..-b..--+.
+            |
+            a
         ..  ..  ..
         ..  ..  ..)");
 }
 
-TEST(ChipBuilderTest, NorIntoNor) {
+TEST(RouteClusterTest, NorIntoNor) {
   GateNetwork net;
   auto in = net.AddInput<3>();
   auto nor = net.Nor({in[0], in[1], in[2]});
   auto nor2 = net.Nor({nor, in[0]});
 
   auto spec = SmallSpec();
-  ChipBuilder b(spec);
+  // Leave enough lanes for the internal signals and the cluster output.
+  spec.bus_width = 3;
 
-  auto placed = b.TryPlace(net, *nor.first);
+  GateCluster cluster{
+      .inputs = {in[0], in[1], in[2]}, .gates = {nor, nor2}, .outputs = {nor2}};
+  auto placed = RouteCluster(spec, cluster, net);
   ASSERT_TRUE(placed.has_value());
-  placed = placed->second.TryPlace(net, *nor2.first);
-  ASSERT_TRUE(placed.has_value());
 
-  std::cerr << placed->second.to_ascii() << "\n";
-  EXPECT_EQ(placed->second.to_ascii(), R"(
-        A       A
-        .+-A..  ..
-        +.--..--.+
-        ||      ||
-        ab      |b
-       c..--..--+.
-       A..--..-a..
+  EXPECT_EQ(placed->num_used(F::kIn), 3);
+  EXPECT_EQ(placed->num_used(F::kNor), 2);
+  EXPECT_EQ(placed->num_used(F::kOut), 1);
 
-
-        ..  ..  ..
-        ..  ..  ..)");
+  EXPECT_EQ(placed->Build().to_ascii(), R"(
+                  A
+        ... A...--.+.
+       A...--...--..+
+        ...  ...  ...
+                  |||
+        A         |bc
+       a...--...-A...
+       b...--...-a+..
+        ...  ...  ...
+        |
+        a
+        ...  ...  ...
+        ...  ...  ...
+        ...  ...  ...)");
 }
 
-TEST(ChipBuilderTest, Complements) {
+TEST(RouteClusterTest, Complements) {
   GateNetwork net;
   auto in = net.AddInput<3>();
   auto nor = net.Nor({net.Not(in[0]), net.Not(in[1]), in[2]});
   auto nor2 = net.Nor({net.Not(nor), in[0]});
 
   auto spec = SmallSpec();
-  ChipBuilder b(spec);
 
-  auto placed = b.TryPlace(net, *nor.first);
+  GateCluster cluster{
+      .inputs = {in[0], in[1], in[2]}, .gates = {nor, nor2}, .outputs = {nor2}};
+  auto placed = RouteCluster(spec, cluster, net);
   ASSERT_TRUE(placed.has_value());
-  placed = placed->second.TryPlace(net, *nor2.first);
-  ASSERT_TRUE(placed.has_value());
 
-  std::cerr << placed->second.to_ascii() << "\n";
-  EXPECT_EQ(placed->second.to_ascii(), R"(
-        B       A
-        .+-B..  ..
-       A..--..--.+
-        ||      ||
-        ab      |b
-       c..--..--+.
-       B..--..-a..
-
-
+  std::cerr << placed->Build().to_ascii() << "\n";
+  EXPECT_EQ(placed->Build().to_ascii(), R"(
+         A  A    B
+       B..--..--+.
+        ..  ..  ..
+         |  |   ||
+        Ab  |   ab
+       a..--..-B..
+        ..  +.-c..
+        |
+        a
         ..  ..  ..
         ..  ..  ..)");
 }
 
-TEST(FpgaMappingTest, Test) {
+TEST(FpgaMappingTest, Decoder) {
   GateNetwork net;
   net.Build<Decoder>();
 
@@ -153,23 +159,27 @@ TEST(FpgaMappingTest, Test) {
       .resources =
           {
               {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
-              {F::kNor, F::kNand, F::kNor, F::kNand, F::kNor, F::kNor},
-              //             {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
+              {F::kFF, F::kNand, F::kNor, F::kNand, F::kNor, F::kNor},
               {F::kNand, F::kNor, F::kNand, F::kNor, F::kNand, F::kNor},
               {F::kIn, F::kIn, F::kIn, F::kIn, F::kIn, F::kIn},
-              {F::kNor, F::kNor, F::kNand, F::kNor, F::kNor, F::kLut2},
-              {F::kFF, F::kNor, F::kLut2, F::kNand, F::kLut2, F::kNor},
+              {F::kNand, F::kNor, F::kNor, F::kNor, F::kNor, F::kLut2},
+              {F::kNor, F::kNor, F::kLut2, F::kNand, F::kLut2, F::kNor},
               {F::kOut, F::kOut, F::kOut, F::kOut, F::kOut, F::kOut},
           },
       .bus_width = 4,
       .nor_arity = kNorArity,
   };
 
-  auto mapping = FpgaMapping::Map(spec, net);
-  for (auto& builder : mapping.chips) {
-    std::cerr << builder.to_ascii() << "\n\n";
+  auto clusters = ClusterGates(spec, net, 8);
+  ASSERT_FALSE(clusters.empty());
+  int routed_clusters = 0;
+  for (const auto& cluster : clusters) {
+    auto builder = RouteCluster(spec, cluster, net);
+    if (builder) {
+      ++routed_clusters;
+      std::cerr << builder->Build().to_ascii() << "\n\n";
+    }
   }
-  for (auto& builder : mapping.chips) {
-    std::cerr << builder.summary() << "\n";
-  }
+  // TODO do something meaningful
+  EXPECT_GT(routed_clusters, 0);
 }

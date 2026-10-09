@@ -3,13 +3,14 @@
 
 #include <array>
 #include <deque>
+#include <functional>
 #include <sstream>
 #include <type_traits>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/container/linked_hash_map.h"
+#include "absl/container/linked_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "rfl.hpp"
 
@@ -312,7 +313,7 @@ struct GateNetwork {
       const std::function<void(int id, const Gate& gate)>& fn) const;
   void WalkUnordered(const std::function<void(int id, Gate& gate)>& fn);
 
-  const std::unordered_set<GateUse>& GetUsers(GateTerminal terminal) const;
+  const absl::linked_hash_set<GateUse>& GetUsers(GateTerminal terminal) const;
   bool IsOnlyUsedByNot(GateTerminal terminal) {
     bool any_use = false;
     for (auto [user, _] : GetUsers(terminal)) {
@@ -359,7 +360,7 @@ struct GateNetwork {
 
   std::deque<Gate> gates_;
   std::vector<Gate*> free_gates_;
-  std::unordered_map<GateTerminal, std::unordered_set<GateUse>> uses_;
+  absl::linked_hash_map<GateTerminal, absl::linked_hash_set<GateUse>> uses_;
   Gate& output_gate_;  // Fake gate to keep output references.
 };
 

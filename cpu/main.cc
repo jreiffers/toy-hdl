@@ -16,7 +16,7 @@
 #include "cpu/decoder.h"
 #include "cpu/export.h"
 #include "cpu/fpga.h"
-#include "cpu/fpga_mapping.h"
+#include "cpu/fpga_mapping_z3.h"
 #include "cpu/gate_lib.h"
 #include "cpu/register_file.h"
 #include "cpu/transistor_lib.h"
@@ -117,14 +117,18 @@ int main(int argc, char* argv[]) {
   if (format == "gnet") {
     absl::flat_hash_map<GateTerminal, std::string> gate_colors;
     if (absl::GetFlag(FLAGS_fpga)) {
-      auto mapping = FpgaMapping::Map(*opts.fpga_spec, net);
+      auto clusters = ClusterGates(*opts.fpga_spec, net, 8);
+      if (clusters.empty()) {
+        std::cerr << "Unable to cluster gates into 8 FPGA chips.\n";
+        return 1;
+      }
       std::vector<std::string> colors = {
           "yellowgreen", "yellow",      "orange", "red",
           "deeppink",    "purple",      "blue",   "cornflowerblue",
           "aqua",        "springgreen", "green"};
 
-      for (int i = 0; i < std::min(colors.size(), mapping.chips.size()); ++i) {
-        for (auto t : mapping.chips[i].Signals()) {
+      for (int i = 0; i < std::min(colors.size(), clusters.size()); ++i) {
+        for (auto t : clusters[i].gates) {
           if (t.first && t.first->kind() != GateKind::kNot) {
             gate_colors[t] = colors[i];
           }
