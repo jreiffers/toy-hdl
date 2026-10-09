@@ -5,15 +5,13 @@
 #include <map>
 #include <optional>
 #include <ranges>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/linked_hash_map.h"
+#include "absl/container/linked_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_join.h"
 #include "cpu/export.h"
 #include "cpu/flags.h"
@@ -288,13 +286,13 @@ struct ScoredCut {
   absl::InlinedVector<GateTerminal, 2> inputs;
   int score;
   uint32_t function;
-  absl::flat_hash_set<Gate*> removable_gates;
+  absl::linked_hash_set<Gate*> removable_gates;
 };
 
 template <typename V>
 bool WalkCut(const GateNetwork& net, GateTerminal out, Cut cut, V&& visit) {
   std::deque<GateTerminal> worklist(cut.begin(), cut.end());
-  absl::flat_hash_map<GateTerminal, uint32_t> seen_inputs;
+  absl::linked_hash_map<GateTerminal, uint32_t> seen_inputs;
 
   while (!worklist.empty()) {
     auto next = worklist.front();
@@ -317,14 +315,14 @@ bool WalkCut(const GateNetwork& net, GateTerminal out, Cut cut, V&& visit) {
 std::optional<ScoredCut> ScoreCut(const GateNetwork& net,
                                   const graph::PostDominatorTree& pdt,
                                   GateTerminal out, Cut in) {
-  absl::flat_hash_map<GateTerminal, uint32_t> funs;
+  absl::linked_hash_map<GateTerminal, uint32_t> funs;
 
   funs[in[0]] = 0b1010;
   if (in.size() == 2) {
     funs[in[1]] = 0b1100;
   }
 
-  absl::flat_hash_set<Gate*> removable;
+  absl::linked_hash_set<Gate*> removable;
   bool walk_success = WalkCut(net, out, in, [&](Gate& gate) {
     // Gate created in this pass iteration - stop here.
     if (!pdt.IsKnown(gate.output())) {
@@ -482,8 +480,8 @@ bool MergeGates(GateNetwork& net) {
 
 namespace {
 
-absl::InlinedVector<Gate*, 6> Intersect(const absl::flat_hash_set<Gate*>& a,
-                                        const absl::flat_hash_set<Gate*>& b) {
+absl::InlinedVector<Gate*, 6> Intersect(const absl::linked_hash_set<Gate*>& a,
+                                        const absl::linked_hash_set<Gate*>& b) {
   if (a.size() > b.size()) return Intersect(b, a);
 
   absl::InlinedVector<Gate*, 6> res;
@@ -495,9 +493,18 @@ absl::InlinedVector<Gate*, 6> Intersect(const absl::flat_hash_set<Gate*>& a,
 }  // namespace
 
 bool FactorGates(GateNetwork& net) {
+  // linked_hash_set is not hashable by default.
+  struct Hasher {
+    size_t operator()(const absl::linked_hash_set<GateTerminal>& inputs) const {
+      size_t hash = 0;
+      for (auto input : inputs) hash += absl::HashOf(input);
+      return absl::HashOf(inputs.size(), hash);
+    }
+  };
+
   using GatesWithInputs =
-      absl::linked_hash_map<absl::flat_hash_set<GateTerminal>,
-                            absl::flat_hash_set<Gate*>>;
+      absl::linked_hash_map<absl::linked_hash_set<GateTerminal>,
+                            absl::linked_hash_set<Gate*>, Hasher>;
 
   auto get_seed_groups = [&](GateKind kind) -> GatesWithInputs {
     GatesWithInputs result;
@@ -576,7 +583,7 @@ bool FactorGates(GateNetwork& net) {
           auto size_n1_inputs = size_n_inputs;
           size_n1_inputs.insert(size_one_input);
 
-          size_n1_groups[size_n1_inputs] = absl::flat_hash_set<Gate*>(
+          size_n1_groups[size_n1_inputs] = absl::linked_hash_set<Gate*>(
               intersection.begin(), intersection.end());
 
           success = true;
@@ -585,7 +592,7 @@ bool FactorGates(GateNetwork& net) {
     } while (success);
 
     bool any_change = false;
-    absl::flat_hash_set<Gate*> invalidated_gates;
+    absl::linked_hash_set<Gate*> invalidated_gates;
     for (int size = groups_by_size.size(); size >= 2; --size) {
       for (const auto& [inputs, gates] : groups_by_size[size - 1]) {
         if (max_benefit(gates, inputs) <= 0) continue;
@@ -676,7 +683,7 @@ bool OptimizeCNF(GateNetwork& net) {
 
   bool ever_changed = false;
   for (auto& [cnf, clauses] : cnfs) {
-    absl::flat_hash_map<GateTerminal, int> input_indices;
+    absl::linked_hash_map<GateTerminal, int> input_indices;
     absl::InlinedVector<GateTerminal, 10> inputs;
 
     for (auto* in : clauses) {
@@ -726,7 +733,7 @@ bool OptimizeCNF(GateNetwork& net) {
       for (auto& [mask, parities] : parities_for_masks) {
         if (parities.size() == 1) continue;
 
-        absl::flat_hash_set<uint64_t> erased;
+        absl::linked_hash_set<uint64_t> erased;
         for (uint64_t p1 : parities) {
           if (erased.contains(p1)) continue;
           for (uint64_t p2 : parities) {

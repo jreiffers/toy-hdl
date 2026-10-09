@@ -165,6 +165,9 @@ cc_library(
         ":gate_lib",
         ":graph",
         "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/container:linked_hash_map",
+        "@abseil-cpp//absl/container:linked_hash_set",
+        "@abseil-cpp//absl/hash",
     ],
 )
 
