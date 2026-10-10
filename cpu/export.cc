@@ -1,13 +1,75 @@
 #include "export.h"
 
 #include <iostream>
+#include <map>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "cpu/format.pb.h"
 #include "cpu/gate_lib.h"
+#include "cpu/graph.h"
 #include "cpu/transistor_lib.h"
+
+std::string PrintNetwork(GateNetwork& net, int indent) {
+  auto name = [](int index) {
+    std::string result;
+    do {
+      result.insert(result.begin(), 'a' + (index % 26));
+      index = index / 26 - 1;
+    } while (index >= 0);
+    return result;
+  };
+
+  graph::TopoSort sort(net, net.all_inputs(), {net.sink()});
+  std::vector<GateTerminal> outputs;
+  for (auto output : net.GetOutputs()) {
+    for (int i = 0; i < output.bitwidth(); ++i) {
+      outputs.push_back(output[i]);
+    }
+  }
+
+  std::map<GateTerminal, std::string> exprs{{kLowGate, "0"}, {kHighGate, "1"}};
+  std::vector<std::string> inputs;
+  for (int i = 0; i < net.total_input_bits(); ++i) {
+    inputs.push_back(name(i));
+    exprs[net.input_bit(i)] = inputs.back();
+  }
+  std::vector<std::string> lines{
+      absl::StrCat(absl::StrJoin(inputs, ", "), " ->")};
+  int next_name = inputs.size();
+  for (auto t : sort.order(false, false)) {
+    auto& gate = *t.first;
+    if (gate.kind() == GateKind::kNot) {
+      exprs[t] = absl::StrCat("~", exprs.at(gate.input(0)));
+    } else {
+      std::string args = absl::StrJoin(
+          gate.inputs(), ", ", [&](std::string* out, GateTerminal input) {
+            absl::StrAppend(out, exprs.at(input));
+          });
+      exprs[t] = absl::StrCat(to_string(gate), "(", args, ")");
+    }
+    if (net.GetUsers(t).size() != 1) {
+      std::string n = name(next_name++);
+      lines.push_back(absl::StrCat("let ", n, " = ", exprs[t], " in"));
+      exprs[t] = n;
+    }
+  }
+  if (outputs.size() == 1) {
+    lines.push_back(exprs.at(outputs[0]));
+  } else {
+    std::string outs = absl::StrJoin(
+        outputs, ", ", [&](std::string* out, GateTerminal output) {
+          absl::StrAppend(out, exprs.at(output));
+        });
+    lines.push_back(absl::StrCat("(", outs, ")"));
+  }
+  return absl::StrJoin(lines, "\n" + std::string(indent, ' '));
+}
 
 std::string label(NodeId id) {
   if (id == kVdd) return "1";

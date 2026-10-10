@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <optional>
+#include <string>
+#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 #include "cpu/format.pb.h"
@@ -15,6 +17,8 @@ void print_graphviz(
     const absl::flat_hash_map<GateTerminal, std::string>& colors = {},
     std::ostream& stream = std::cout);
 void print_ngspice(const Network& net, NodeId out);
+
+std::string PrintNetwork(GateNetwork& net, int indent = 2);
 
 // Prints the network in a custom ad-hoc netlist format.
 toyhdl::serialization::Network ExportNetlist(const Network& net);

@@ -229,6 +229,15 @@ cc_library(
 )
 
 cc_test(
+    name = "export_test",
+    srcs = ["export_test.cc"],
+    deps = [
+        ":export",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "alu_test",
     srcs = ["alu_test.cc"],
     deps = [
