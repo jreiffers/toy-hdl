@@ -60,6 +60,16 @@ TEST(TokenizeTest, TokenizeTest) {
                   TokenId(T::kSemicolon), TokenId(T::kBraceRight)));
 }
 
+TEST(TokenizeTest, ShiftAndComparisonOperators) {
+  Context ctx("<< >> <<= >>= < > <= >=");
+  using T = TokenType;
+  EXPECT_THAT(
+      Tokenize(ctx),
+      ElementsAre(TokenId(T::kShl), TokenId(T::kShr), TokenId(T::kAssignShl),
+                  TokenId(T::kAssignShr), TokenId(T::kLt), TokenId(T::kGt),
+                  TokenId(T::kLe), TokenId(T::kGe)));
+}
+
 std::string GetParseError(std::string code) {
   Context ctx(code);
   Tokenizer t(ctx);

@@ -37,6 +37,8 @@ namespace jank {
   visit(kAssignDiv, false, "/=")                                               \
   visit(kAssignShr, false, ">>=")                                              \
   visit(kAssignShl, false, "<<=")                                              \
+  visit(kShr, false, ">>")                                                     \
+  visit(kShl, false, "<<")                                                     \
   visit(kLe, false, "<=")                                                      \
   visit(kGe, false, ">=")                                                      \
   visit(kLt, false, "<")                                                       \
@@ -48,8 +50,6 @@ namespace jank {
   visit(kAsterisk, false, "*")                                                 \
   visit(kDiv, false, "/")                                                      \
   visit(kMod, false, "%")                                                      \
-  visit(kShr, false, ">>")                                                     \
-  visit(kShl, false, "<<")                                                     \
   visit(kAssign, false, "=")                                                   \
   visit(kSemicolon, false, ";")                                                \
   visit(kCond, false, "?")                                                     \
