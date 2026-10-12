@@ -15,6 +15,7 @@
 #include "absl/strings/str_join.h"
 #include "cpu/export.h"
 #include "cpu/flags.h"
+#include "cpu/fpga.h"
 #include "cpu/graph.h"
 
 namespace {
@@ -139,30 +140,6 @@ bool FoldGates(GateNetwork& net, const FoldGatesOpts& opts) {
           gate.ReplaceAllUsesWith(kHighGate);
         }
       }
-
-      auto split_nand_nor = [&](std::optional<int> max_arity,
-                                GateKind gate_kind) {
-        if (!max_arity) return;
-        if (gate.kind() != gate_kind || gate.num_inputs() <= max_arity) return;
-
-        absl::InlinedVector<GateTerminal, 2> internals;
-        for (int i = 0; i < gate.num_inputs(); i += *max_arity) {
-          int n = std::min(gate.num_inputs() - i, *max_arity);
-          auto span = gate.inputs().subspan(i, n);
-          internals.push_back(
-              net.AddGate(gate_kind, absl::InlinedVector<GateTerminal, 2>(
-                                         span.begin(), span.end()))
-                  .output());
-        }
-
-        GateKind combiner =
-            gate_kind == GateKind::kNor ? GateKind::kNand : GateKind::kNor;
-        gate.ReplaceAllUsesWith(
-            net.Not(net.AddGate(combiner, internals).output()));
-      };
-
-      split_nand_nor(opts.maximum_nor_arity, GateKind::kNor);
-      split_nand_nor(opts.maximum_nand_arity, GateKind::kNand);
 
       opts.callback();
       changed |= canonicalized;
@@ -646,28 +623,40 @@ bool FactorGates(GateNetwork& net) {
   return nor || nand;
 }
 
-bool OptimizeCNF(GateNetwork& net) {
-  // Not necessarily full CNFs; having a CNF-like subset is enough. The values
-  // are the cnf-like subset.
-  absl::linked_hash_map<Gate*, absl::InlinedVector<Gate*, 10>> cnfs;
+namespace {
+GateKind GetDual(const Gate& gate) {
+  ABSL_CHECK(gate.kind() == GateKind::kNor || gate.kind() == GateKind::kNand);
+  return gate.kind() == GateKind::kNor ? GateKind::kNand : GateKind::kNor;
+}
+}  // namespace
+
+bool OptimizeNF(GateNetwork& net) {
+  // Not necessarily full NFs; having an NF-like subset is enough. The values
+  // are the nf-like subset.
+  absl::linked_hash_map<Gate*, absl::InlinedVector<Gate*, 10>> nfs;
   absl::linked_hash_map<Gate*, absl::InlinedVector<GateTerminal, 2>>
       extra_inputs;
   net.WalkUnordered([&](int, Gate& gate) {
-    if (gate.kind() == GateKind::kNor) {
+    if (gate.kind() == GateKind::kNor || gate.kind() == GateKind::kNand) {
+      auto dual = GetDual(gate);
       absl::InlinedVector<Gate*, 10> clauses;
       absl::InlinedVector<GateTerminal, 2> extras;
       for (int i = 0; i < gate.num_inputs(); ++i) {
         auto* in = gate.input(i).first;
         if (in &&
-            (in->kind() == GateKind::kNor || in->kind() == GateKind::kNot)) {
+            (in->kind() == gate.kind() || in->kind() == GateKind::kNot ||
+             // Single-use dual gates can be merged:
+             // nor(nand(x, y), z) -> nor(~x, ~y, z)
+             (in->kind() == dual && net.GetUsers(in->output()).size() == 1))) {
           clauses.push_back(in);
         } else {
           extras.push_back(gate.input(i));
         }
       }
 
-      if (clauses.size() > 1) {
-        cnfs[&gate] = std::move(clauses);
+      if (clauses.size() > 1 ||
+          (clauses.size() == 1 && clauses.front()->kind() == dual)) {
+        nfs[&gate] = std::move(clauses);
         extra_inputs[&gate] = std::move(extras);
       }
     }
@@ -682,13 +671,14 @@ bool OptimizeCNF(GateNetwork& net) {
   };
 
   bool ever_changed = false;
-  for (auto& [cnf, clauses] : cnfs) {
+  for (auto& [root, clauses] : nfs) {
+    auto dual = GetDual(*root);
     absl::linked_hash_map<GateTerminal, int> input_indices;
     absl::InlinedVector<GateTerminal, 10> inputs;
 
     for (auto* in : clauses) {
       for (int j = 0; j < in->num_inputs(); ++j) {
-        auto [input, negated] = get_input(in, j);
+        auto input = get_input(in, j).first;
         if (input_indices.try_emplace(input, input_indices.size()).second) {
           inputs.push_back(input);
         }
@@ -701,28 +691,37 @@ bool OptimizeCNF(GateNetwork& net) {
     // parity: 1 if negated.
     std::map<uint64_t, std::set<uint64_t>> parities_for_masks;
 
+    bool changed = false;
     for (auto* in : clauses) {
       uint64_t mask = 0;
       uint64_t parity = 0;
-      for (int j = 0; j < in->num_inputs(); ++j) {
-        auto v = get_input(in, j);
-        int index = input_indices[v.first];
-
-        // TODO: something should rewrite this to false.
-        ABSL_CHECK(!(mask & (1ull << index)));
-
-        mask |= 1ull << index;
-        if (v.second) {
-          parity |= 1ull << index;
+      if (in->kind() == dual) {
+        // Flatten dual clauses
+        for (int j = 0; j < in->num_inputs(); ++j) {
+          auto [input, negated] = get_input(in, j);
+          uint64_t bit = 1ull << input_indices[input];
+          parities_for_masks[bit].insert(negated ? bit : 0);
         }
-      }
+        changed = true;
+      } else {
+        for (int j = 0; j < in->num_inputs(); ++j) {
+          auto [input, negated] = get_input(in, j);
+          uint64_t bit = 1ull << input_indices[input];
 
-      parities_for_masks[mask].insert(parity);
+          // TODO: something should rewrite this to false.
+          ABSL_CHECK(!(mask & bit));
+
+          mask |= bit;
+          if (negated) {
+            parity |= bit;
+          }
+        }
+        parities_for_masks[mask].insert(parity);
+      }
     }
 
     absl::InlinedVector<std::pair<uint64_t, uint64_t>, 6> to_erase;
     absl::InlinedVector<std::pair<uint64_t, uint64_t>, 3> to_add;
-    bool changed = false;
 
     do {
       to_erase.clear();
@@ -757,7 +756,6 @@ bool OptimizeCNF(GateNetwork& net) {
               to_erase.emplace_back(mask, p2);
               to_add.emplace_back(mask ^ diff, p1 & p2);
               changed = true;
-              ever_changed = true;
             }
           }
         }
@@ -775,7 +773,7 @@ bool OptimizeCNF(GateNetwork& net) {
       absl::InlinedVector<GateTerminal, 10> negated_inputs;
       for (auto input : inputs) negated_inputs.push_back(net.Not(input));
 
-      absl::InlinedVector<GateTerminal, 2> new_inputs(extra_inputs[cnf]);
+      absl::InlinedVector<GateTerminal, 2> new_inputs(extra_inputs[root]);
       for (const auto& [mask, parities] : parities_for_masks) {
         for (uint64_t parity : parities) {
           absl::InlinedVector<GateTerminal, 2> inner_inputs;
@@ -785,17 +783,20 @@ bool OptimizeCNF(GateNetwork& net) {
             inner_inputs.push_back((parity & bit ? negated_inputs : inputs)[i]);
           }
           // TODO: Scope
-          new_inputs.push_back(net.Nor(inner_inputs));
+          new_inputs.push_back(
+              net.AddGate(root->kind(), std::move(inner_inputs)).output());
         }
       }
 
-      ScopeGuard guard(net, cnf->scope());
-      cnf->ReplaceAllUsesWith(net.Nor(new_inputs));
+      ScopeGuard guard(net, root->scope());
+      root->ReplaceAllUsesWith(
+          net.AddGate(root->kind(), std::move(new_inputs)).output());
+      ever_changed = true;
     }
   }
 
   if (absl::GetFlag(FLAGS_dump_after_all)) {
-    print_graphviz(net, "optimize-cnf");
+    print_graphviz(net, "optimize-normal-forms");
   }
 
   return ever_changed;
@@ -820,7 +821,7 @@ bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts) {
     do {
       sub_changed = false;
       // There's a nondet somewhere around here (:decoder_test).
-      sub_changed |= OptimizeCNF(net);
+      sub_changed |= OptimizeNF(net);
       // TODO: FactorGates should be idempotent.
       while (FactorGates(net)) sub_changed = true;
       sub_changed |= RunCanonicalizer(net);
@@ -836,4 +837,45 @@ bool RunGateOptPipeline(GateNetwork& net, const FoldGatesOpts& opts) {
   } while (changed);
 
   return ever_changed;
+}
+
+bool LowerFpgaGates(GateNetwork& net, const FpgaSpec& spec) {
+  bool changed = false;
+  net.WalkUnordered([&](int, Gate& gate) {
+    if (gate.kind() == GateKind::kNand && gate.num_inputs() > 2) {
+      ScopeGuard guard(net, gate.scope());
+      absl::InlinedVector<GateTerminal, 2> inputs;
+      for (auto t : gate.inputs()) inputs.push_back(net.Not(t));
+      gate.ReplaceAllUsesWith(net.Not(net.Nor(inputs)));
+      changed = true;
+    }
+  });
+  bool sub_changed;
+  do {
+    sub_changed = FoldGates(net, {});
+    net.WalkUnordered([&](int, Gate& gate) {
+      auto kind = gate.kind();
+      if (kind == GateKind::kNor || kind == GateKind::kNand) {
+        int max_arity = kind == GateKind::kNor ? spec.nor_arity : 2;
+        if (gate.num_inputs() <= max_arity) return;
+
+        ScopeGuard guard(net, gate.scope());
+        absl::InlinedVector<GateTerminal, 2> internals;
+        for (int i = 0; i < gate.num_inputs(); i += max_arity) {
+          auto inputs = gate.inputs().subspan(
+              i, std::min(gate.num_inputs() - i, max_arity));
+          internals.push_back(
+              net.AddGate(kind, absl::InlinedVector<GateTerminal, 2>(
+                                    inputs.begin(), inputs.end()))
+                  .output());
+        }
+        gate.ReplaceAllUsesWith(
+            net.Not(net.AddGate(GetDual(gate), internals).output()));
+        sub_changed = true;
+      }
+    });
+    sub_changed |= CseGates(net);
+    changed |= sub_changed;
+  } while (sub_changed);
+  return changed;
 }

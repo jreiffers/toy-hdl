@@ -164,6 +164,7 @@ cc_library(
     deps = [
         ":export",
         ":flags",
+        ":fpga",
         ":gate_lib",
         ":graph",
         "@abseil-cpp//absl/algorithm:container",
@@ -178,6 +179,8 @@ cc_test(
     srcs = ["gate_opt_test.cc"],
     deps = [
         ":eval",
+        ":export",
+        ":fpga",
         ":gate_opt",
         "@googletest//:gtest_main",
         "@abseil-cpp//absl/status:status_matchers",
@@ -224,7 +227,9 @@ cc_library(
     deps = [
         ":format_cc_proto",
         ":gate_lib",
+        ":graph",
         ":transistor_lib",
+        "@abseil-cpp//absl/strings",
     ]
 )
 

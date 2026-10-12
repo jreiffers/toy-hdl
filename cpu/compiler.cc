@@ -10,11 +10,8 @@ Network Compile(GateNetwork& net, const CompileOpts& opts) {
   FoldGatesOpts fold_opts;
   fold_opts.lower_mux = opts.avoid_transmission_gates;
   fold_opts.callback = opts.callback;
-  if (opts.fpga_spec) {
-    fold_opts.maximum_nor_arity = opts.fpga_spec->nor_arity;
-    fold_opts.maximum_nand_arity = 2;
-  }
   RunGateOptPipeline(net, fold_opts);
+  if (opts.fpga_spec) LowerFpgaGates(net, *opts.fpga_spec);
 
   Network transistor_net = Lower(net);
   std::cerr << "  Number of transistors: " << transistor_net.num_transistors()
