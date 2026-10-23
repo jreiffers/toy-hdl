@@ -6,9 +6,10 @@ cc_library(
     srcs = ["context.cc", "lexer.cc", "parser.cc", "print.cc"],
     hdrs = ["ast.h", "context.h", "lexer.h", "parser.h", "print.h"],
     deps = [
-      "@abseil-cpp//absl/container:inlined_vector",
+      "@abseil-cpp//absl/log:check",
       "@abseil-cpp//absl/container:flat_hash_map",
       "@abseil-cpp//absl/container:flat_hash_set",
+      "@abseil-cpp//absl/container:inlined_vector",
       "@abseil-cpp//absl/strings",
       "@abseil-cpp//absl/strings:str_format",
     ],

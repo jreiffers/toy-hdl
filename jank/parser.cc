@@ -1,11 +1,24 @@
 #include "jank/parser.h"
 
+#include <initializer_list>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "jank/ast.h"
 #include "jank/context.h"
 #include "jank/lexer.h"
 
 namespace jank {
 namespace {
+
+#define EXPECT(condition, ...)           \
+  do {                                   \
+    if (!(condition)) {                  \
+      __VA_OPT__(Errors({__VA_ARGS__});) \
+      return false;                      \
+    }                                    \
+  } while (false)
 
 struct NameAndType {
   Type ty;
@@ -21,10 +34,7 @@ class Parser {
   std::optional<Type> TryParseType();
   bool ParseType(Type& ty) {
     auto maybe_ty = TryParseType();
-    if (!maybe_ty) {
-      Error("Expected type.");
-      return false;
-    }
+    EXPECT(maybe_ty, {"Expected type.", tokenizer_.last_token().loc});
     ty = *maybe_ty;
     return true;
   }
@@ -35,7 +45,19 @@ class Parser {
     ctx_.AddError(std::move(msg), tokenizer_.last_token().loc);
   }
 
+  void Errors(std::initializer_list<jank::Error> errors) {
+    for (const auto& error : errors) {
+      ctx_.AddError(error.message, error.loc);
+    }
+  }
+
+  std::optional<bool> TryParseVarDecl(Block& b);
+
   bool ParseBlock(Block& b);
+  bool ParseInstruction(Block& parent, InstructionNode& out, bool semi = true);
+  bool ParseIf(Block& parent, InstructionNode& i);
+  bool ParseWhile(Block& parent, InstructionNode& i);
+  bool ParseFor(Block& parent, InstructionNode& i);
 
   bool Consume(TokenType ty) {
     if (tokenizer_.peek().type != ty) return false;
@@ -49,46 +71,40 @@ class Parser {
   }*/
 
   bool Expect(TokenType ty) {
-    if (!Consume(ty)) {
-      Error(absl::StrCat("Expected '", to_string(ty), "'."));
-      return false;
-    }
+    EXPECT(Consume(ty), {absl::StrCat("Expected '", to_string(ty), "'."),
+                         tokenizer_.last_token().loc});
     return true;
   }
 
   template <typename C, typename F>
-  std::optional<bool> ParseList(C& c, F&& f) {
+  std::optional<bool> TryParseList(C& c, F&& f) {
     if (!Consume(TokenType::kParenLeft)) return std::nullopt;
-    while (tokenizer_ && tokenizer_.peek().type != TokenType::kParenRight) {
-      if (!f(c.emplace_back())) {
-        return false;
-      }
-
-      if (tokenizer_ && tokenizer_.peek().type != TokenType::kParenRight) {
-        if (!Expect(TokenType::kComma)) return false;
-      }
-    }
+    if (Consume(TokenType::kParenRight)) return true;
+    do {
+      EXPECT(f(c.emplace_back()));
+    } while (Consume(TokenType::kComma));
     return Expect(TokenType::kParenRight);
   }
 
+  template <typename C, typename F>
+  bool ParseList(C& c, F&& f) {
+    auto success = TryParseList(c, std::forward<F>(f));
+    EXPECT(success, {"Expected '('.", tokenizer_.last_token().loc});
+    return *success;
+  }
+
   std::optional<Token> Get(TokenType ty) {
-    if (tokenizer_.peek().type != ty) {
-      Error(absl::StrCat("Expected '", to_string(ty), "'."));
-      return std::nullopt;
-    }
-    return tokenizer_.get();
+    if (!Expect(ty)) return std::nullopt;
+    return tokenizer_.last_token();
   }
 
   bool Get(TokenType ty, Token& out) {
-    if (tokenizer_.peek().type != ty) {
-      return false;
-    }
-    out = tokenizer_.get();
+    EXPECT(Consume(ty));
+    out = tokenizer_.last_token();
     return true;
   }
 
-  bool ParseFunctionCall(Block& b, Token name);
-  bool ParseExpression(ExpressionNode*& out);
+  bool ParseExpression(Scope& scope, ExpressionNode*& out, int min_prec = 0);
 
  private:
   Context& ctx_;
@@ -113,55 +129,225 @@ std::optional<Type> Parser::TryParseType() {
   return std::nullopt;
 }
 
-bool Parser::ParseExpression(ExpressionNode*& out) {}
+#define JANK_VISITOR(type, token, prec, ...) \
+  {TokenType::token, {ExpressionType::type, prec}},
+const auto& kOperators =
+    *new absl::flat_hash_map<TokenType, std::pair<ExpressionType, int>>{
+        JANK_VISIT_BINARY_OPERATORS(JANK_VISITOR){
+            TokenType::kCond, {ExpressionType::kConditional, 10}},
+        {TokenType::kBracketLeft, {ExpressionType::kArrayIndex, 0}},
+    };
 
-bool Parser::ParseFunctionCall(Block& b, Token name) {
-  auto* sym = b.scope.Lookup(name.text);
-  if (!sym) {
-    ctx_.AddError(absl::StrCat("Undeclared identifier '", name.text, "'."),
-                  name.loc);
-    return false;
+const auto& kUnaryOperators =
+    *new absl::flat_hash_map<TokenType, std::pair<ExpressionType, int>>{
+        JANK_VISIT_UNARY_OPERATORS(JANK_VISITOR)};
+#undef JANK_VISITOR
+
+const auto& kAssignmentOperators = *[] {
+  auto* result = new absl::flat_hash_map<TokenType, ExpressionType>;
+#define JANK_VISITOR(type, _, __, assignment)                        \
+  if constexpr (TokenType::assignment != TokenType::kUnknownToken) { \
+    result->emplace(TokenType::assignment, ExpressionType::type);    \
+  }
+  JANK_VISIT_BINARY_OPERATORS(JANK_VISITOR)
+#undef JANK_VISITOR
+  return result;
+}();
+
+bool Parser::ParseExpression(Scope& scope, ExpressionNode*& out, int min_prec) {
+  Token token = tokenizer_.get();
+  ExpressionNode* lhs = nullptr;
+
+  switch (token.type) {
+    case TokenType::kIntLiteral:
+      lhs = module_.alloc_expr(token.loc, ExpressionType::kConstant);
+      CHECK(absl::SimpleAtoi(token.text, &lhs->const_val));
+      break;
+    case TokenType::kIdentifier: {
+      auto* symbol = scope.Lookup(token.text);
+      EXPECT(symbol, {absl::StrCat("Undeclared identifier '", token.text, "'."),
+                      token.loc});
+      if (dynamic_cast<FunctionNode*>(symbol)) {
+        lhs = module_.alloc_expr(token.loc, ExpressionType::kCall);
+        EXPECT(ParseList(lhs->operands, [&](ExpressionNode*& arg) {
+          return ParseExpression(scope, arg);
+        }));
+      } else {
+        EXPECT(tokenizer_.peek().type != TokenType::kParenLeft,
+               {"Only functions can be called.", token.loc},
+               {"Note: declared here:", symbol->loc()});
+        lhs = module_.alloc_expr(token.loc, ExpressionType::kVariable);
+      }
+      lhs->symbol = symbol;
+      break;
+    }
+    case TokenType::kParenLeft:
+      EXPECT(ParseExpression(scope, lhs) && Expect(TokenType::kParenRight));
+      break;
+    default:
+      auto unary = kUnaryOperators.find(token.type);
+      if (unary != kUnaryOperators.end()) {
+        EXPECT(ParseExpression(scope, lhs, unary->second.second));
+        auto* expr = module_.alloc_expr(token.loc, unary->second.first);
+        expr->operands = {lhs};
+        lhs = expr;
+      } else {
+        ctx_.AddError("Expected expression.", token.loc);
+        return false;
+      }
   }
 
-  auto* fun = dynamic_cast<FunctionNode*>(sym);
-  if (!fun) {
-    Error("Only functions can be called.");
-    ctx_.AddError(absl::StrCat("Note: declared here:"), sym->loc());
-    return false;
+  while (true) {
+    auto op_it = kOperators.find(tokenizer_.peek().type);
+    if (op_it == kOperators.end()) break;
+    auto [type, prec] = op_it->second;
+    if (prec < min_prec) break;
+    Token op = tokenizer_.get();
+
+    bool cond = op.type == TokenType::kCond;
+    prec = cond ? prec : prec + 1;
+
+    auto* expr = module_.alloc_expr(op.loc, type);
+    expr->operands = {lhs, nullptr};
+    EXPECT(ParseExpression(scope, expr->operands[1], prec));
+    if (op.type == TokenType::kBracketLeft) {
+      EXPECT(Expect(TokenType::kBracketRight));
+    } else if (op.type == TokenType::kCond) {
+      expr->operands.push_back(nullptr);
+      EXPECT(Expect(TokenType::kColon) &&
+             ParseExpression(scope, expr->operands[2], prec));
+    }
+    lhs = expr;
+  }
+  out = lhs;
+  return true;
+}
+
+bool Parser::ParseInstruction(Block& parent, InstructionNode& out, bool semi) {
+  switch (tokenizer_.peek().type) {
+    case TokenType::kIf:
+      return semi && ParseIf(parent, out);
+    case TokenType::kFor:
+      return semi && ParseFor(parent, out);
+    case TokenType::kWhile:
+      return semi && ParseWhile(parent, out);
+    case TokenType::kBraceLeft: {
+      EXPECT(semi);
+      out.type = InstructionType::kBlock;
+      out.block = module_.alloc_block(tokenizer_.peek().loc, &parent.scope);
+      return ParseBlock(*out.block);
+    }
+    default:
+      EXPECT(ParseExpression(parent.scope, out.expression));
+      auto operation = kAssignmentOperators.find(tokenizer_.peek().type);
+      if (tokenizer_.peek().type == TokenType::kAssign ||
+          operation != kAssignmentOperators.end()) {
+        auto op = tokenizer_.get();
+        auto* target = out.expression;
+        EXPECT(target->type == ExpressionType::kVariable ||
+                   target->type == ExpressionType::kArrayIndex,
+               {"Expected assignable expression.", op.loc});
+        out.type = InstructionType::kAssign;
+        out.target = target;
+        EXPECT(ParseExpression(parent.scope, out.expression));
+        if (operation != kAssignmentOperators.end()) {
+          auto* value = module_.alloc_expr(op.loc, operation->second);
+          value->operands = {target, out.expression};
+          out.expression = value;
+        }
+      }
+      return !semi || Expect(TokenType::kSemicolon);
+  }
+}
+
+std::optional<bool> Parser::TryParseVarDecl(Block& b) {
+  auto type = TryParseType();
+  if (!type) {
+    return std::nullopt;
   }
 
-  // std::vector<ExpressionNode*> args;
-  // auto match_and_success = ParseList(args, [this](ExpressionNode*& out) {
-  //   return ParseExpression(out);
-  // });
+  auto ident = Get(TokenType::kIdentifier);
+  EXPECT(ident);
+  InstructionNode* assign = nullptr;
+  if (tokenizer_.peek().type == TokenType::kAssign) {
+    tokenizer_.get();
+    assign = &b.instructions.emplace_back();
+    EXPECT(ParseExpression(b.scope, assign->expression));
+  }
 
-  // assert(match_and_success.has_value());
-  // return *match_and_success;
-  return false;
+  auto* var = module_.alloc_var(ident->loc, ident->text, *type);
+  EXPECT(var && b.scope.AddVar(*var));
+  if (assign) {
+    assign->type = InstructionType::kAssign;
+    assign->target = module_.alloc_expr(var->loc(), ExpressionType::kVariable);
+    assign->target->symbol = var;
+  }
+
+  return Expect(TokenType::kSemicolon);
 }
 
 bool Parser::ParseBlock(Block& b) {
-  if (!Expect(TokenType::kBraceLeft)) return false;
-
+  EXPECT(Expect(TokenType::kBraceLeft));
   while (tokenizer_ && tokenizer_.peek().type != TokenType::kBraceRight) {
-    auto type = TryParseType();
-    if (type) {
-      auto ident = Get(TokenType::kIdentifier);
-      auto* var = module_.alloc_var(ident->loc, ident->text, *type);
-      if (!var) return false;
-      if (!b.scope.AddVar(*var)) return false;
-      if (!Expect(TokenType::kSemicolon)) return false;
+    if (auto decl = TryParseVarDecl(b)) {
+      EXPECT(*decl);
       continue;
     }
+    EXPECT(ParseInstruction(b, b.instructions.emplace_back()));
+  }
+  return Expect(TokenType::kBraceRight);
+}
 
-    if (auto ident = Get(TokenType::kIdentifier)) {
-      if (tokenizer_.peek().type == TokenType::kParenLeft) {
-        if (!ParseFunctionCall(b, *ident)) return false;
-      }
-    }
+bool Parser::ParseIf(Block& parent, InstructionNode& i) {
+  i.type = InstructionType::kIf;
+  EXPECT(Expect(TokenType::kIf) && Expect(TokenType::kParenLeft) &&
+         ParseExpression(parent.scope, i.expression) &&
+         Expect(TokenType::kParenRight));
+  EXPECT(ParseInstruction(parent,
+                          *i.children.emplace_back(module_.alloc_instr())));
+  if (tokenizer_.peek().type == TokenType::kElse) {
+    tokenizer_.get();
+    EXPECT(ParseInstruction(parent,
+                            *i.children.emplace_back(module_.alloc_instr())));
+  }
+  return true;
+}
+
+bool Parser::ParseFor(Block& parent, InstructionNode& i) {
+  auto t = tokenizer_.get();
+  EXPECT(Expect(TokenType::kParenLeft));
+  i.type = InstructionType::kBlock;
+  i.block = module_.alloc_block(t.loc, &parent.scope);
+
+  if (auto decl = TryParseVarDecl(*i.block)) {
+    EXPECT(*decl);
+  } else {
+    EXPECT(Expect(TokenType::kSemicolon));
   }
 
-  return Expect(TokenType::kBraceRight);
+  auto& for_inst = i.block->instructions.emplace_back();
+  for_inst.type = InstructionType::kFor;
+  for_inst.children = {nullptr, module_.alloc_instr()};
+
+  EXPECT(ParseExpression(i.block->scope, for_inst.expression) &&
+         Expect(TokenType::kSemicolon));
+
+  if (tokenizer_.peek().type != TokenType::kParenRight) {
+    for_inst.children[0] = module_.alloc_instr();
+    EXPECT(ParseInstruction(*i.block, *for_inst.children[0], /*semi=*/false));
+  }
+
+  EXPECT(Expect(TokenType::kParenRight));
+  return ParseInstruction(*i.block, *for_inst.children[1]);
+}
+
+bool Parser::ParseWhile(Block& parent, InstructionNode& i) {
+  i.type = InstructionType::kWhile;
+  EXPECT(Expect(TokenType::kWhile) && Expect(TokenType::kParenLeft) &&
+         ParseExpression(parent.scope, i.expression) &&
+         Expect(TokenType::kParenRight));
+  return ParseInstruction(parent,
+                          *i.children.emplace_back(module_.alloc_instr()));
 }
 
 void Parser::ParseTopLevelDecl() {
@@ -184,7 +370,7 @@ void Parser::ParseTopLevelDecl() {
   };
   std::vector<Param> params;
 
-  if (auto match_and_success = ParseList(
+  if (auto match_and_success = TryParseList(
           params,
           [this](Param& a) {
             return ParseType(a.ty) && Get(TokenType::kIdentifier, a.name);

@@ -44,15 +44,44 @@ class VariableNode : public Node {
   Type type;
 };
 
+// (expression type, token type, precedence,
+// syntactic sugar assignment token type or kUnknownToken for none)
+// clang-format off
+#define JANK_VISIT_BINARY_OPERATORS(visit)                  \
+  visit(kAdd, kPlus,     50, kAssignPlus)                   \
+  visit(kSub, kMinus,    50, kAssignMinus)                  \
+  visit(kMul, kAsterisk, 60, kAssignMul)                    \
+  visit(kDiv, kDiv,      60, kAssignDiv)                    \
+  visit(kMod, kMod,      60, kUnknownToken)                 \
+  visit(kShl, kShl,      40, kAssignShl)                    \
+  visit(kShr, kShr,      40, kAssignShr)                    \
+  visit(kLt,  kLt,       30, kUnknownToken)                 \
+  visit(kLe,  kLe,       30, kUnknownToken)                 \
+  visit(kGt,  kGt,       30, kUnknownToken)                 \
+  visit(kGe,  kGe,       30, kUnknownToken)                 \
+  visit(kEq,  kEq,       20, kUnknownToken)                 \
+  visit(kNe,  kNe,       20, kUnknownToken)
+
+#define JANK_VISIT_UNARY_OPERATORS(visit)                   \
+  visit(kNeg,        kNeg,      70)                         \
+  visit(kNot,        kNot,      70)                         \
+  visit(kUnaryMinus, kMinus,    70)
+
+
 enum class ExpressionType {
   kUnknown,
-  kAdd,
-  kSub,
-  kMul,
+#define JANK_VISITOR(type, ...) type,
+  JANK_VISIT_BINARY_OPERATORS(JANK_VISITOR)
+  JANK_VISIT_UNARY_OPERATORS(JANK_VISITOR)
+#undef JANK_VISITOR
+  kConditional,
+  kArrayIndex,
 
   kConstant,
   kVariable,
+  kCall,
 };
+// clang-format on
 
 class Scope {
  public:
@@ -114,10 +143,30 @@ class Scope {
 struct ExpressionNode : public Node {
   using Node::Node;
 
-  ExpressionType type;
+  ExpressionType type = ExpressionType::kUnknown;
+  int const_val;
+  Node* symbol = nullptr;
+  std::vector<ExpressionNode*> operands;
 };
 
-struct InstructionNode {};
+enum class InstructionType { kExpression, kAssign, kBlock, kIf, kWhile, kFor };
+
+class Block;
+
+// TODO should probably be a Node
+struct InstructionNode {
+  InstructionType type = InstructionType::kExpression;
+  ExpressionNode* expression = nullptr;
+  ExpressionNode* target = nullptr;
+  Block* block = nullptr;  // Valid only for kind == kBlock
+
+  // if (expression) [0] else [1]
+  // while (expression) [0]
+  // for (; expression; [0]) [1]
+  //    [0] is nullptr if empty.
+
+  std::vector<InstructionNode*> children;
+};
 
 class Block : public Node {
  public:
@@ -215,12 +264,27 @@ class Module {
 
   const std::deque<FunctionNode>& functions() const { return functions_; }
 
+  ExpressionNode* alloc_expr(SourceLocation loc, ExpressionType type) {
+    auto* expr = &expression_nodes_.emplace_back(loc);
+    expr->type = type;
+    return expr;
+  }
+
+  Block* alloc_block(SourceLocation loc, Scope* parent) {
+    return &blocks_.emplace_back(loc, parent);
+  }
+
+  InstructionNode* alloc_instr() { return &instrs_.emplace_back(); }
+
  private:
   Context* ctx_;
   Scope global_scope_;
   std::deque<FunctionNode> functions_;
   std::deque<VariableNode> var_nodes_;
+  std::deque<ExpressionNode> expression_nodes_;
   std::deque<FunctionDefinitionNode> fun_defs_;
+  std::deque<Block> blocks_;
+  std::deque<InstructionNode> instrs_;
 };
 
 }  // namespace jank

@@ -1,6 +1,8 @@
 #include "jank/print.h"
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "jank/lexer.h"
 
 namespace jank {
 namespace {
@@ -36,7 +38,10 @@ struct Printer {
     }
   }
 
+  Printer& instr(const InstructionNode& inst, bool semi = true);
+
   Printer& PrintBlock(const Block& b);
+  Printer& expr(const ExpressionNode& e);
 
   Printer& ty(Type type) { return ty(type.type); }
 };
@@ -46,6 +51,97 @@ struct Indent {
   ~Indent() { --pr->indent; }
   Printer* pr;
 };
+
+std::string_view Operator(ExpressionType type) {
+  switch (type) {
+#define JANK_VISITOR(type, token, ...) \
+  case ExpressionType::type:           \
+    return to_string(TokenType::token);
+    JANK_VISIT_BINARY_OPERATORS(JANK_VISITOR)
+    JANK_VISIT_UNARY_OPERATORS(JANK_VISITOR)
+#undef JANK_VISITOR
+    default:
+      return "";
+  }
+}
+
+Printer& Printer::expr(const ExpressionNode& e) {
+  switch (e.type) {
+    case ExpressionType::kConstant:
+      return s(absl::StrCat(e.const_val));
+    case ExpressionType::kVariable:
+      return s(dynamic_cast<const VariableNode*>(e.symbol)->name);
+    case ExpressionType::kCall:
+      s(dynamic_cast<const FunctionNode*>(e.symbol)->name()).s("(");
+      for (size_t i = 0; i < e.operands.size(); ++i) {
+        if (i > 0) s(", ");
+        expr(*e.operands[i]);
+      }
+      return s(")");
+    case ExpressionType::kArrayIndex:
+      return expr(*e.operands[0]).s("[").expr(*e.operands[1]).s("]");
+    case ExpressionType::kConditional:
+      return s("(")
+          .expr(*e.operands[0])
+          .s(" ? ")
+          .expr(*e.operands[1])
+          .s(" : ")
+          .expr(*e.operands[2])
+          .s(")");
+#define JANK_VISITOR(exp, ...) \
+  case ExpressionType::exp:    \
+    return s("(").s(Operator(e.type)).expr(*e.operands[0]).s(")");
+      JANK_VISIT_UNARY_OPERATORS(JANK_VISITOR)
+#undef JANK_VISITOR
+    case ExpressionType::kUnknown:
+      return s("<unknown>");
+    default:
+      return s("(")
+          .expr(*e.operands[0])
+          .s(" ")
+          .s(Operator(e.type))
+          .s(" ")
+          .expr(*e.operands[1])
+          .s(")");
+  }
+}
+
+Printer& Printer::instr(const InstructionNode& inst, bool semi) {
+  switch (inst.type) {
+    case InstructionType::kAssign:
+      CHECK(inst.target);
+      expr(*inst.target).s(" = ");
+    case InstructionType::kExpression:
+      expr(*inst.expression);
+      if (semi) s(";");
+      break;
+    case InstructionType::kBlock:
+      PrintBlock(*inst.block);
+      break;
+    case InstructionType::kIf:
+      s("if (").expr(*inst.expression).s(") ").instr(*inst.children[0]);
+
+      if (inst.children.size() > 1) {
+        CHECK_EQ(inst.children.size(), 2);
+        endl().s("else ").instr(*inst.children[1]);
+      }
+      break;
+    case InstructionType::kFor:
+      CHECK_EQ(inst.children.size(), 2);
+      s("for (; ").expr(*inst.expression).s("; ");
+      if (inst.children[0]) instr(*inst.children[0], /*semi=*/false);
+      s(") ").instr(*inst.children[1]);
+      break;
+    case InstructionType::kWhile:
+      CHECK_EQ(inst.children.size(), 1);
+      s("while (").expr(*inst.expression).s(") ").instr(*inst.children[0]);
+      break;
+    default:
+      CHECK(false);
+  }
+
+  return *this;
+}
 
 Printer& Printer::PrintBlock(const Block& b) {
   s("{");
@@ -58,6 +154,9 @@ Printer& Printer::PrintBlock(const Block& b) {
     Indent block_indent(this);
     for (auto* var : b.scope.vars()) {
       ty(var->type).s(" ").s(var->name).s(";").endl();
+    }
+    for (const auto& instruction : b.instructions) {
+      instr(instruction).endl();
     }
   }
   s("}");

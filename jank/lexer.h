@@ -48,6 +48,8 @@ namespace jank {
   visit(kPlus, false, "+")                                                     \
   visit(kMinus, false, "-")                                                    \
   visit(kAsterisk, false, "*")                                                 \
+  visit(kNot, false, "!")                                                      \
+  visit(kNeg, false, "~")                                                      \
   visit(kDiv, false, "/")                                                      \
   visit(kMod, false, "%")                                                      \
   visit(kAssign, false, "=")                                                   \
@@ -94,7 +96,7 @@ class Tokenizer {
   }
 
   Token get() {
-    Token result = *next_token_;
+    Token result = peek();
     last_token_ = result;
     Tokenize();
     return result;
