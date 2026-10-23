@@ -85,6 +85,16 @@ TEST(TokenizeTest, InvalidDigit) {
      |           ^)");
 }
 
+TEST(TokenizeTest, KeywordPrefix) {
+  Context ctx("iffy");
+  EXPECT_THAT(Tokenize(ctx), ElementsAre(Identifier("iffy")));
+}
+
+TEST(TokenizeTest, TrailingWhitespace) {
+  Context ctx("a \n  ");
+  EXPECT_THAT(Tokenize(ctx), ElementsAre(Identifier("a")));
+}
+
 TEST(TokenizeTest, LineComment) {
   Context ctx(R"(te//st
      a / 3 // 5)");
@@ -101,7 +111,6 @@ TEST(TokenizeTest, MultiLineComment) {
      */st)");
   auto tokens = Tokenize(ctx);
 
-  using T = TokenType;
   ASSERT_THAT(tokens, ElementsAre(Identifier("te"), Identifier("st")));
 }
 
@@ -110,7 +119,6 @@ TEST(TokenizeTest, MultiLineCommentDegenerate) {
      */st)");
   std::vector<Token> tokens = Tokenize(ctx);
 
-  using T = TokenType;
   ASSERT_THAT(tokens, ElementsAre(Identifier("te"), Identifier("st")));
 }
 

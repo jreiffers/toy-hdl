@@ -56,6 +56,8 @@ void Tokenizer::Tokenize() {
         advance(1);
       }
 
+      if (s_.empty()) return;
+
       if (s_[0] == '/' && s_.size() > 1) {
         if (s_[1] == '/') {
           skip_to_including("\n", /*optional=*/true);
@@ -78,15 +80,6 @@ void Tokenizer::Tokenize() {
 
   if (s_.empty()) return;
 
-    // clang-format off
-#define JANK_VISITOR(id, is_variable, val) \
-  if (!is_variable && s_.starts_with(val)) { \
-    next_token_ = Token{ TokenType::id, val, loc_ }; \
-    advance(std::string_view(val).size()); \
-  } else
-  JANK_VISIT_TOKENS(JANK_VISITOR)
-#undef JANK_VISITOR
-  // clang-format on
   if (s_[0] >= '0' && s_[0] <= '9') {
     int i = 0;
     while (s_.size() > i && s_[i] >= '0' && s_[i] <= '9') {
@@ -104,8 +97,22 @@ void Tokenizer::Tokenize() {
       ++i;
     }
     next_token_ = Token{TokenType::kIdentifier, s_.substr(0, i), loc_};
+#define JANK_VISITOR(id, is_variable, val)      \
+  if (!is_variable && next_token_->text == val) \
+    next_token_->type = TokenType::id;
+    JANK_VISIT_TOKENS(JANK_VISITOR)
+#undef JANK_VISITOR
     advance(i);
   } else {
+    // clang-format off
+#define JANK_VISITOR(id, is_variable, val) \
+  if (!is_variable && s_.starts_with(val)) { \
+    next_token_ = Token{ TokenType::id, val, loc_ }; \
+    advance(std::string_view(val).size()); \
+  } else
+    JANK_VISIT_TOKENS(JANK_VISITOR)
+#undef JANK_VISITOR
+    // clang-format on
     error(absl::StrCat("Unexpected '", s_.substr(0, 1), "'."));
   }
 }
