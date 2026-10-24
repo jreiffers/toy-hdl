@@ -1,5 +1,6 @@
 #include "gate_lib.h"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
@@ -395,6 +396,13 @@ bool Gate::operator<(const Gate& rhs) const {
   if (kind() != rhs.kind()) return kind() < rhs.kind();
   if (num_outputs_ != rhs.num_outputs_) return num_outputs_ < rhs.num_outputs_;
   if (lookup_data_ != rhs.lookup_data_) return lookup_data_ < rhs.lookup_data_;
+  if (kind() == GateKind::kNand || kind() == GateKind::kNor) {
+    auto lhs_inputs = inputs_;
+    auto rhs_inputs = rhs.inputs_;
+    std::sort(lhs_inputs.begin(), lhs_inputs.end());
+    std::sort(rhs_inputs.begin(), rhs_inputs.end());
+    return lhs_inputs < rhs_inputs;
+  }
   return inputs_ < rhs.inputs_;
 }
 

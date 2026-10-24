@@ -16,6 +16,35 @@ void OptNoTG(GateNetwork& net) {
   MergeGates(net);
 }
 
+class CseGatesTest
+    : public ::testing::TestWithParam<
+          std::pair<std::string_view, std::string_view>> {};
+
+TEST_P(CseGatesTest, InputOrder) {
+  const auto& [source, expected] = GetParam();
+  GateNetwork net;
+  ParseNetwork(net, source);
+  EXPECT_EQ(CseGates(net), source != expected);
+  EXPECT_THAT(net, NetworkIs(expected));
+  EXPECT_FALSE(CseGates(net));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    GateOpt, CseGatesTest,
+    ::testing::ValuesIn(
+        std::vector<std::pair<std::string_view, std::string_view>>{
+            {"a, b, c -> (nand(a, b, c), nand(c, a, b))",
+             "a, b, c -> let d = nand(a, b, c) in (d, d)"},
+            {"a, b, c -> (nor(a, b, c), nor(b, c, a))",
+             "a, b, c -> let d = nor(a, b, c) in (d, d)"},
+            {"a, b -> (~nand(a, b), ~nand(b, a))",
+             "a, b -> let c = ~nand(a, b) in (c, c)"},
+             // TODO maybe add LUT normalization if it matters
+            {"a, b -> let c = ~a in let d = ~b in "
+             "(lut[2](a, c, b, d), lut[2](b, d, a, c))",
+             "a, b -> let c = ~a in let d = ~b in "
+             "(lut[2](a, c, b, d), lut[2](b, d, a, c))"}}));
+
 TEST(GateOptTest, OptimizeNfNandInNor) {
   GateNetwork net;
   ParseNetwork(net, "a, b, c -> nor(c, nand(a, ~b))");
