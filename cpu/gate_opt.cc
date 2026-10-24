@@ -727,6 +727,18 @@ bool OptimizeNF(GateNetwork& net) {
       to_erase.clear();
       to_add.clear();
 
+      // ab + abc = ab.
+      for (auto& [mask, parities] : parities_for_masks) {
+        changed |= std::erase_if(parities, [&](uint64_t parity) {
+                     auto can_absorb = [&](const auto& subset) {
+                       const auto& [smask, sparities] = subset;
+                       bool strict = smask != mask && ((smask & mask) == smask);
+                       return strict && sparities.contains(parity & smask);
+                     };
+                     return absl::c_any_of(parities_for_masks, can_absorb);
+                   }) != 0;
+      }
+
       // Look for pairs with the same mask and only one bit difference in
       // parity.
       for (auto& [mask, parities] : parities_for_masks) {

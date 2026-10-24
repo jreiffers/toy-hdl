@@ -56,6 +56,37 @@ TEST(GateOptTest, OptimizeNfVsFactoring) {
   EXPECT_FALSE(RunGateOptPipeline(net, {}));
 }
 
+class OptimizeNfAbsorptionTest
+    : public ::testing::TestWithParam<
+          std::pair<std::string_view, std::string_view>> {};
+
+TEST_P(OptimizeNfAbsorptionTest, Simplifies) {
+  const auto& [source, expected] = GetParam();
+  GateNetwork net;
+  ParseNetwork(net, source);
+  EXPECT_EQ(OptimizeNF(net), source != expected);
+  FoldGates(net, {});
+  EXPECT_THAT(net, NetworkIs(expected));
+  EXPECT_FALSE(OptimizeNF(net));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    GateOpt, OptimizeNfAbsorptionTest,
+    ::testing::ValuesIn(
+        std::vector<std::pair<std::string_view, std::string_view>>{
+            {"a, b, c -> nand(nand(a, b), nand(a, b, c))",
+             "a, b, c -> ~nand(a, b)"},
+            {"a, b, c -> nor(nor(a, b), nor(a, b, c))",
+             "a, b, c -> ~nor(a, b)"},
+            {"a, b, c -> nand(nand(~a, b), nand(~a, b, c))",
+             "a, b, c -> ~nand(~a, b)"},
+            {"a, b -> nand(nand(a, b), ~a)", "a, b -> a"},
+            {"a, b -> nor(nor(a, b), ~a)", "a, b -> a"},
+            {"a, b, c -> nand(nand(a, b), nand(a, ~b), nand(a, c))",
+             "a, b, c -> a"},
+            {"a, b, c -> nand(nand(a, b), nand(~a, b, c))",
+             "a, b, c -> nand(nand(a, b), nand(~a, b, c))"}}));
+
 TEST(GateOptTest, MuxToXor) {
   GateNetwork net;
   ParseNetwork(net, "a, s -> mux(s, ~s, ~a, a)");
