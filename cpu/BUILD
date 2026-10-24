@@ -124,6 +124,8 @@ cc_test(
     name = "gate_lib_test",
     srcs = ["gate_lib_test.cc"],
     deps = [
+        ":gate_text_format_matchers",
+        ":gate_text_format",
         ":eval",
         ":gate_lib",
         "@googletest//:gtest_main",
@@ -178,8 +180,9 @@ cc_test(
     name = "gate_opt_test",
     srcs = ["gate_opt_test.cc"],
     deps = [
+        ":gate_text_format_matchers",
         ":eval",
-        ":export",
+        ":gate_text_format",
         ":fpga",
         ":gate_opt",
         "@googletest//:gtest_main",
@@ -227,17 +230,41 @@ cc_library(
     deps = [
         ":format_cc_proto",
         ":gate_lib",
-        ":graph",
         ":transistor_lib",
         "@abseil-cpp//absl/strings",
     ]
 )
 
-cc_test(
-    name = "export_test",
-    srcs = ["export_test.cc"],
+cc_library(
+    name = "gate_text_format",
+    srcs = ["gate_text_format.cc"],
+    hdrs = ["gate_text_format.h"],
     deps = [
-        ":export",
+        ":gate_lib",
+        ":graph",
+        "//jank",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gate_text_format_matchers",
+    testonly = True,
+    hdrs = ["gate_text_format_matchers.h"],
+    deps = [
+        ":gate_text_format",
+        "//jank",
+        "@googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "gate_text_format_test",
+    srcs = ["gate_text_format_test.cc"],
+    deps = [
+        ":gate_text_format_matchers",
+        ":gate_text_format",
         "@googletest//:gtest_main",
     ],
 )
@@ -290,6 +317,7 @@ cc_test(
     name = "compiler_test",
     srcs = ["compiler_test.cc"],
     deps = [
+        ":gate_text_format",
         ":cpu_modules",
         ":eval",
         ":gate_opt",
@@ -356,6 +384,7 @@ cc_test(
     name = "graph_test",
     srcs = ["graph_test.cc"],
     deps = [
+        ":gate_text_format",
         ":gate_opt",
         ":graph",
         ":cpu_modules",

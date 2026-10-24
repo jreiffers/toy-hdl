@@ -5,6 +5,8 @@
 
 #include "absl/status/status_matchers.h"
 #include "cpu/eval.h"
+#include "cpu/gate_text_format.h"
+#include "cpu/gate_text_format_matchers.h"
 
 using ::testing::ElementsAre;
 using ::testing::Optional;
@@ -22,9 +24,9 @@ TEST(GateLibTest, DeclareOutputs) {
 
 TEST(GateLibTest, ReplaceOutput) {
   GateNetwork net;
-  GateTerminal in = net.AddInput<1>()[0];
-  GateTerminal not_in = net.Not(in);
-  net.DeclareOutput(DynGateReg({not_in}));
+  ParseNetwork(net, "a -> ~a");
+  auto in = net.input_bit(0);
+  auto not_in = net.GetOutput(0)[0];
 
   EXPECT_EQ(net.GetOutput(0)[0], not_in);
   not_in.first->ReplaceAllUsesWith(in);
@@ -34,71 +36,41 @@ TEST(GateLibTest, ReplaceOutput) {
 
 TEST(GateLibTest, CanonicalizeLookup) {
   GateNetwork net;
-  GateTerminal in = net.AddInput<1>()[0];
-  Gate& lookup = *net.Xor(in, kHighGate).first;
-  net.DeclareOutput(DynGateReg({lookup.output()}));
-
-  ASSERT_EQ(lookup.kind(), GateKind::kLookup);
-  ASSERT_TRUE(lookup.Canonicalize());
-
-  ASSERT_EQ(lookup.num_inputs(), 2);
-  EXPECT_EQ(lookup.input(0), in);
-  EXPECT_EQ(lookup.lookup_data(), 1);
+  ParseNetwork(net, "a -> lut[6](a, 1, ~a, 0)");
+  ASSERT_TRUE(net.GetOutput(0)[0].first->Canonicalize());
+  EXPECT_THAT(net, NetworkIs("a -> lut[1](a, ~a)"));
 }
 
 TEST(GateLibTest, CanonicalizeLookup2) {
   GateNetwork net;
-  GateTerminal in = net.AddInput<1>()[0];
-  Gate& lookup = *net.Xor(kHighGate, in).first;
-  net.DeclareOutput(DynGateReg({lookup.output()}));
-
-  ASSERT_EQ(lookup.kind(), GateKind::kLookup);
-  ASSERT_TRUE(lookup.Canonicalize());
+  ParseNetwork(net, "a -> lut[6](1, a, 0, ~a)");
+  ASSERT_TRUE(net.GetOutput(0)[0].first->Canonicalize());
 
   ABSL_EXPECT_OK(VerifySpec(
-      net, {DynGateReg({lookup.output()})},
+      net, net.GetOutputs(),
       [](absl::Span<const uint32_t> inputs)
           -> absl::InlinedVector<uint32_t, 4> { return {!inputs[0]}; }));
 
-  ASSERT_EQ(lookup.num_inputs(), 2);
-  EXPECT_EQ(lookup.input(0), in);
-  EXPECT_EQ(lookup.lookup_data(), 1);
+  EXPECT_THAT(net, NetworkIs("a -> lut[1](a, ~a)"));
 }
 
 TEST(GateLibTest, CanonicalizeNand) {
   GateNetwork net;
-  GateTerminal in = net.AddInput<1>()[0];
-  Gate& nand = *net.Nand({in, kHighGate}).first;
-  net.DeclareOutput(DynGateReg({nand.output()}));
-
-  ASSERT_EQ(nand.kind(), GateKind::kNand);
-  ASSERT_TRUE(nand.Canonicalize());
-
-  ASSERT_EQ(nand.num_inputs(), 1);
-  EXPECT_EQ(nand.input(0), in);
-  EXPECT_EQ(nand.kind(), GateKind::kNot);
+  ParseNetwork(net, "a -> nand(a, 1)");
+  ASSERT_TRUE(net.GetOutput(0)[0].first->Canonicalize());
+  EXPECT_THAT(net, NetworkIs("a -> ~a"));
 }
 
 TEST(GateLibTest, DoNotCanonicalizeNand) {
   GateNetwork net;
-  GateTerminal in = net.AddInput<1>()[0];
-  Gate& nand = *net.Nand({in, kLowGate}).first;
-  net.DeclareOutput(DynGateReg({nand.output()}));
-
-  ASSERT_EQ(nand.kind(), GateKind::kNand);
-  ASSERT_FALSE(nand.Canonicalize());
+  ParseNetwork(net, "a -> nand(a, 0)");
+  ASSERT_FALSE(net.GetOutput(0)[0].first->Canonicalize());
+  EXPECT_THAT(net, NetworkIs("a -> nand(a, 0)"));
 }
 
 TEST(GateLibTest, CanonicalizeNor) {
   GateNetwork net;
-  GateTerminal in = net.AddInput<1>()[0];
-  Gate& nand = *net.Nor({in, kLowGate}).first;
-  net.DeclareOutput(DynGateReg({nand.output()}));
-
-  ASSERT_EQ(nand.kind(), GateKind::kNor);
-  ASSERT_TRUE(nand.Canonicalize());
-
-  ASSERT_EQ(nand.num_inputs(), 1);
-  EXPECT_EQ(nand.input(0), in);
-  EXPECT_EQ(nand.kind(), GateKind::kNot);
+  ParseNetwork(net, "a -> nor(a, 0)");
+  ASSERT_TRUE(net.GetOutput(0)[0].first->Canonicalize());
+  EXPECT_THAT(net, NetworkIs("a -> ~a"));
 }

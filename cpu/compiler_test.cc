@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "absl/status/status_matchers.h"
+#include "cpu/gate_text_format.h"
 #include "eval.h"
 
 template <int bw>
@@ -36,11 +37,7 @@ TEST(CompilerTest, RegressionTestAdd1_4) { ABSL_EXPECT_OK(VerifyAdd1<4>()); }
 
 absl::Status VerifyMux(const CompileOpts& opts, int expected_transistors) {
   GateNetwork net;
-  GateReg<1> sel = net.AddInput<1>();
-  GateReg<1> a = net.AddInput<1>();
-  GateReg<1> b = net.AddInput<1>();
-  GateTerminal out = net.Mux(sel[0], a[0], b[0]);
-  net.DeclareOutput(DynGateReg({out}));
+  ParseNetwork(net, "s, a, b -> mux(s, ~s, a, b)");
 
   auto compiled = Compile(net, opts);
   if (compiled.num_transistors() != expected_transistors) {

@@ -3,8 +3,9 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "cpu/export.h"
 #include "cpu/fpga.h"
+#include "cpu/gate_text_format.h"
+#include "cpu/gate_text_format_matchers.h"
 
 void OptNoTG(GateNetwork& net) {
   CseGates(net);
@@ -17,64 +18,47 @@ void OptNoTG(GateNetwork& net) {
 
 TEST(GateOptTest, OptimizeNfNandInNor) {
   GateNetwork net;
-  auto in = net.AddInput<3>();
-  auto a = in[0], b = in[1], c = in[2];
-  net.DeclareOutput(net.Nor({c, net.Nand({a, net.Not(b)})}));
+  ParseNetwork(net, "a, b, c -> nor(c, nand(a, ~b))");
 
   EXPECT_TRUE(OptimizeNF(net));
   FoldGates(net, {});
-  EXPECT_EQ(PrintNetwork(net, 14), R"(a, b, c ->
-              nor(c, ~a, b))");
+  EXPECT_THAT(net, NetworkIs("a, b, c -> nor(c, ~a, b)"));
   EXPECT_FALSE(OptimizeNF(net));
 }
 
 TEST(GateOptTest, OptimizeNfMultiUseNand) {
   GateNetwork net;
-  auto in = net.AddInput<3>();
-  auto shared = net.Nand({in[0], net.Not(in[1])});
-  net.DeclareOutput(shared);
-  net.DeclareOutput(net.Nor({in[2], shared}));
+  ParseNetwork(net, "a, b, c -> let d = nand(a, ~b) in (d, nor(c, d))");
 
   EXPECT_FALSE(OptimizeNF(net));
-  EXPECT_EQ(PrintNetwork(net, 17),
-            R"(a, b, c ->
-                 let d = nand(a, ~b) in
-                 (d, nor(c, d)))");
+  EXPECT_THAT(net, NetworkIs(R"(a, b, c ->
+    let d = nand(a, ~b) in (d, nor(c, d)))"));
 }
 
 TEST(GateOptTest, OptimizeNfNorInNand) {
   GateNetwork net;
-  auto in = net.AddInput<3>();
-  auto a = in[0], b = in[1], c = in[2];
-  net.DeclareOutput(net.Nand({c, net.Nor({a, net.Not(b)})}));
+  ParseNetwork(net, "a, b, c -> nand(c, nor(a, ~b))");
 
   EXPECT_TRUE(OptimizeNF(net));
   FoldGates(net, {});
-  EXPECT_EQ(PrintNetwork(net, 14), R"(a, b, c ->
-              nand(c, ~a, b))");
+  EXPECT_THAT(net, NetworkIs("a, b, c -> nand(c, ~a, b)"));
   EXPECT_FALSE(OptimizeNF(net));
 }
 
 TEST(GateOptTest, OptimizeNfVsFactoring) {
   GateNetwork net;
-  auto in = net.AddInput<8>();
-  for (int i = 5; i < 8; ++i)
-    net.DeclareOutput(net.Nor({in[0], in[1], in[2], in[3], in[4], in[i]}));
+  ParseNetwork(net, R"(a, b, c, d, e, f, g, h ->
+    (nor(a, b, c, d, e, f), nor(a, b, c, d, e, g), nor(a, b, c, d, e, h)))");
   RunGateOptPipeline(net, {});
-  EXPECT_EQ(PrintNetwork(net, 17),
-            R"(a, b, c, d, e, f, g, h ->
+  EXPECT_THAT(net, NetworkIs(R"(a, b, c, d, e, f, g, h ->
                  let i = nor(e, d, c, b, a) in
-                 (~nand(i, ~f), ~nand(i, ~g), ~nand(i, ~h)))");
+                 (~nand(i, ~f), ~nand(i, ~g), ~nand(i, ~h)))"));
   EXPECT_FALSE(RunGateOptPipeline(net, {}));
 }
 
 TEST(GateOptTest, MuxToXor) {
   GateNetwork net;
-  GateReg<1> a = net.AddInput<1>();
-  GateReg<1> sel = net.AddInput<1>();
-
-  GateReg<1> not_a = net.Not(a);
-  net.DeclareOutput(net.Mux(sel[0], not_a, a));
+  ParseNetwork(net, "a, s -> mux(s, ~s, ~a, a)");
 
   OptNoTG(net);
 
@@ -86,11 +70,7 @@ TEST(GateOptTest, MuxToXor) {
 
 TEST(GateOptTest, MuxToEq) {
   GateNetwork net;
-  GateReg<1> a = net.AddInput<1>();
-  GateReg<1> sel = net.AddInput<1>();
-
-  GateReg<1> not_a = net.Not(a);
-  net.DeclareOutput(net.Mux(sel[0], a, not_a));
+  ParseNetwork(net, "a, s -> mux(s, ~s, a, ~a)");
 
   OptNoTG(net);
 
@@ -102,13 +82,9 @@ TEST(GateOptTest, MuxToEq) {
 
 TEST(GateOptTest, RegressionTestNoExistingNot) {
   GateNetwork net;
-  GateReg<1> a = net.AddInput<1>();
-  GateReg<1> b = net.AddInput<1>();
-  GateReg<1> c = net.AddInput<1>();
-
-  GateTerminal x = net.Nand({a, b});
-  GateTerminal r = net.Nand({net.Nand({c, x}), net.Not(net.Nor({c, x}))});
-  net.DeclareOutput(r);
+  ParseNetwork(net,
+               "a, b, c -> let x = nand(a, b) in "
+               "nand(nand(c, x), ~nor(c, x))");
 
   OptNoTG(net);
 
@@ -121,7 +97,7 @@ TEST(GateOptTest, RegressionTestNoExistingNot) {
 }
 
 TEST(GateOptTest, LowerOversizedFpgaNand) {
-  auto lower = [](int arity) {
+  auto lower = [](int arity, std::string_view expected) {
     SCOPED_TRACE(arity);
     GateNetwork net;
     auto in = net.AddInput<9>();
@@ -133,23 +109,23 @@ TEST(GateOptTest, LowerOversizedFpgaNand) {
     FpgaSpec spec{.bus_width = 4, .nor_arity = 4};
 
     EXPECT_TRUE(LowerFpgaGates(net, spec));
-    return PrintNetwork(net, 17);
+    EXPECT_THAT(net, NetworkIs(expected));
   };
 
-  EXPECT_EQ(lower(3),
-            R"(a, b, c, d, e, f, g, h, i ->
+  lower(3,
+        R"(a, b, c, d, e, f, g, h, i ->
                  let j = nor(~a, ~b, ~c) in
                  (~j, j))");
-  EXPECT_EQ(lower(4),
-            R"(a, b, c, d, e, f, g, h, i ->
+  lower(4,
+        R"(a, b, c, d, e, f, g, h, i ->
                  let j = nor(~a, ~b, ~c, ~d) in
                  (~j, j))");
-  EXPECT_EQ(lower(5),
-            R"(a, b, c, d, e, f, g, h, i ->
+  lower(5,
+        R"(a, b, c, d, e, f, g, h, i ->
                  let j = nand(nor(~a, ~b, ~c, ~d), e) in
                  (j, ~j))");
-  EXPECT_EQ(lower(9),
-            R"(a, b, c, d, e, f, g, h, i ->
+  lower(9,
+        R"(a, b, c, d, e, f, g, h, i ->
                  let j = nor(nand(nor(~a, ~b, ~c, ~d), nor(~e, ~f, ~g, ~h)), ~i) in
                  (~j, j))");
 }

@@ -18,8 +18,6 @@ void print_graphviz(
     std::ostream& stream = std::cout);
 void print_ngspice(const Network& net, NodeId out);
 
-std::string PrintNetwork(GateNetwork& net, int indent = 2);
-
 // Prints the network in a custom ad-hoc netlist format.
 toyhdl::serialization::Network ExportNetlist(const Network& net);
 

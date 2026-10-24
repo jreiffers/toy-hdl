@@ -8,6 +8,7 @@
 #include "absl/strings/str_join.h"
 #include "cpu/alu.h"
 #include "cpu/gate_opt.h"
+#include "cpu/gate_text_format.h"
 #include "cpu/register_file.h"
 
 namespace graph {
@@ -106,18 +107,17 @@ TEST(GraphTest, TestAlu) {
 TEST(GraphTest, TestChain) {
   GateNetwork net;
 
-  GateReg<1> in = net.AddInput<1>();
-  auto n1 = net.Not(in);
-  auto n2 = net.Not(n1);
-  auto n3 = net.Not(n2);
-  net.DeclareOutput(n3);
+  ParseNetwork(net, "a -> ~~~a");
 
   graph::TopoSort toposort(net, net.all_inputs(), {net.sink()});
   graph::PostDominatorTree pdt(net, toposort);
 
   pdt.dump();
 
-  std::vector<GateTerminal> ts{in[0], n1[0], n2[0], n3[0]};
+  auto n3 = net.GetOutput(0)[0];
+  auto n2 = n3.first->input(0);
+  auto n1 = n2.first->input(0);
+  std::vector<GateTerminal> ts{net.input_bit(0), n1, n2, n3};
   for (int i = 0; i < ts.size(); ++i) {
     for (int j = 0; j < ts.size(); ++j) {
       EXPECT_TRUE(pdt.Check(/*dominator=*/ts[i], ts[j]) == (i >= j))
