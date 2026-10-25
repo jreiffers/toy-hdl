@@ -132,18 +132,18 @@ void BuildIsa(IsaBuilder& builder) {
   using F = FieldSemantics;
   // clang-format off
   builder.DefineField("pred",      0b10000000000, "bool",       {F::kPredication});
-  builder.DefineField("imm",       0b00011000011, "uint32_t",   {F::kAluRhs, F::kImmediate});
-  builder.DefineField("cmp",       0b00000110000, "Comparator", {F::kAluCmp});  // e, gt, ne, le
-  builder.DefineField("lhs",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
-  builder.DefineField("rhs",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
+  builder.DefineField("imm",       0b00000111100, "uint32_t",   {F::kAluRhs, F::kImmediate});
+  builder.DefineField("cmp",       0b00011000000, "Comparator", {F::kAluCmp});  // e, gt, ne, le
+  builder.DefineField("lhs",       0b01100000000, "Register",   {F::kRegReadAddr0, F::kAluLhs});
+  builder.DefineField("rhs",       0b00000110000, "Register",   {F::kRegReadAddr1, F::kAluRhs});
 
-  builder.DefineField("dst",       0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});
-  builder.DefineField("src",       0b00000000011, "Register",   {F::kRegReadAddr1, F::kAluRhs});
-  builder.DefineField("dstaddr",   0b00000001100, "Register",   {F::kRegReadAddr0, F::kAluLhs});
-  builder.DefineField("val",       0b00000010000, "uint32_t",   {F::kTestBitVal});
-  builder.DefineField("deref_src", 0b00000010000, "bool",       {F::kDerefSrc});
+  builder.DefineField("dst",       0b01100000000, "Register",   {F::kRegReadAddr0, F::kAluLhs, F::kRegWriteAddr});
+  builder.DefineField("src",       0b00000110000, "Register",   {F::kRegReadAddr1, F::kAluRhs});
+  builder.DefineField("dstaddr",   0b01100000000, "Register",   {F::kRegReadAddr0, F::kAluLhs});
+  builder.DefineField("val",       0b00001000000, "uint32_t",   {F::kTestBitVal});
+  builder.DefineField("deref_src", 0b00001000000, "bool",       {F::kDerefSrc});
 
-  builder.DefineField("jumpaddr",  0b00000111111, "uint32_t",   {F::kJumpAddr});
+  builder.DefineField("jumpaddr",  0b01111110000, "uint32_t",   {F::kJumpAddr});
   // clang-format on
 
   // rsrc/[rsrc], rdst
@@ -163,81 +163,79 @@ void BuildIsa(IsaBuilder& builder) {
 #define C ABSL_CHECK_OK
   using I = InstrSemantics;
   // clang-format off
-  C(builder.DefineInstruction("addi",   0'700'77'00'7777_enc,  // b = b + imm
+  C(builder.DefineInstruction("addi",    0'77700777700_enc,  // b = b + imm
                               imm_to_reg, {}));
-  C(builder.DefineInstruction("movi",   0'700'77'01'7777_enc,
+  C(builder.DefineInstruction("movi",    0'77701777700_enc,
                               imm_to_reg,  // b = imm
                               {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("subi",   0'700'77'10'7777_enc,  // b = b - imm
+  C(builder.DefineInstruction("subi",    0'77710777700_enc,  // b = b - imm
                               imm_to_reg, {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("subitnz",0'700'77'11'7777_enc,  // b = b - imm, test != 0
+  C(builder.DefineInstruction("subitnz", 0'77711777700_enc,  // b = b - imm, test != 0
                               imm_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet, I::kCmpNz}));
-  C(builder.DefineInstruction("testi",  0'701'77777777_enc,  // a <cmp> imm
+  C(builder.DefineInstruction("testi",   0'77777777701_enc,  // a <cmp> imm
                               cmp_reg_to_imm,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
 
-  C(builder.DefineInstruction("add",    0'710000'77777_enc,  // b = b + a/[a]
+  C(builder.DefineInstruction("add",     0'77707770111_enc,  // b = b + a/[a]
                               reg_or_mem_to_reg, {}));
-  C(builder.DefineInstruction("mov",    0'710001'77777_enc,  // b = a/[a]
+  C(builder.DefineInstruction("mov",     0'77707771010_enc,  // b = a/[a]
                               reg_or_mem_to_reg, {I::kAluZeroLhs}));
-  C(builder.DefineInstruction("sub",    0'710010'77777_enc,  // b = b - a/[a]
+  C(builder.DefineInstruction("sub",     0'77707770010_enc,  // b = b - a/[a]
                               reg_or_mem_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn}));
-  C(builder.DefineInstruction("subr",   0'710011'77777_enc,  // b = a/[a] - b
+  C(builder.DefineInstruction("subr",    0'77717770111_enc,  // b = a/[a] - b
                               reg_or_mem_to_reg, {I::kAluNotRhs, I::kAluNot}));
-  C(builder.DefineInstruction("subtnz", 0'710100'77777_enc,  // b = b - a, test != 0
+  C(builder.DefineInstruction("subtnz",  0'77717770010_enc,  // b = b - a, test != 0
                               reg_or_mem_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet, I::kCmpNz}));
-  C(builder.DefineInstruction("addtnz", 0'710101'77777_enc,  // b = a + b, test != 0
+  C(builder.DefineInstruction("addtnz",  0'77717771010_enc,  // b = a + b, test != 0
                               reg_or_mem_to_reg, {I::kFlagSet, I::kCmpNz}));
 
-  C(builder.DefineInstruction("and",    0'7101100'7777_enc, reg_to_reg,
+  C(builder.DefineInstruction("and",     0'77710771110_enc, reg_to_reg,
                               {I::kAluAnd}));
-  C(builder.DefineInstruction("andtnz", 0'7101101'7777_enc, reg_reg, // test a & b != 0
+  C(builder.DefineInstruction("andtnz",  0'77711771110_enc, reg_reg, // test a & b != 0
                               {I::kAluAnd, I::kFlagSet, I::kCmpNz}));
-  C(builder.DefineInstruction("store",  0'7101110'7777_enc,  // [b] = a
+  C(builder.DefineInstruction("store",   0'77700771110_enc,  // [b] = a
                               reg_to_mem, {I::kAluZeroLhs, I::kStMem}));
-  C(builder.DefineInstruction("ldgpi",  0'7101111'7777_enc,  // b = gpi [a]
+  C(builder.DefineInstruction("ldgpi",   0'77701771110_enc,  // b = gpi [a]
                               mem_to_reg, {I::kAluZeroLhs, I::kLdGpi}));
 
-  C(builder.DefineInstruction("jump",   0'71100'777777_enc,  // jump rombank:imm6
+  C(builder.DefineInstruction("jump",    0'77777770110_enc,  // jump rombank:imm6
                               jump, {I::kJump}));
-  C(builder.DefineInstruction("call",   0'71101'777777_enc,  // call rombank:imm6
+  C(builder.DefineInstruction("call",    0'77777770011_enc,  // call rombank:imm6
                               jump, {I::kJump, I::kPushPc}));
 
-  C(builder.DefineInstruction("test",   0'71110'777777_enc,  // a <cmp> b
+  C(builder.DefineInstruction("test",    0'77777771011_enc,  // a <cmp> b
                               cmp_reg_to_reg,
                               {I::kAluNotRhs, I::kAluCarryIn, I::kFlagSet}));
 
-  C(builder.DefineInstruction("wait",   0'711110'77777_enc,  // wait for gpi [a] =/!= b
+  C(builder.DefineInstruction("wait",    0'77707771111_enc,  // wait for gpi [a] =/!= b
                               wait, {I::kAluNotRhs, I::kAluCarryIn, I::kWait, I::kLdGpi}));
 
-  C(builder.DefineInstruction("retpop", 0'7111110'7700_enc,  // pop r; ret
+  C(builder.DefineInstruction("retpop",  0'77711001111_enc,  // pop r; ret
                               {"pred", "dst"},
                               {I::kAluZeroLhs, I::kPopPc, I::kPopReg}));
-  C(builder.DefineInstruction("pop", 0'7111110'7701_enc,  // pop
+  C(builder.DefineInstruction("pop",     0'77711011111_enc,  // pop
                               {"pred", "dst"}, {I::kPopReg}));
-  C(builder.DefineInstruction("membank", 0'7111110'7710_enc,  // select memory bank r
+  C(builder.DefineInstruction("membank", 0'77710001111_enc,  // select memory bank r
                               {"pred", "lhs"}, {I::kMemBankSet}));
-  C(builder.DefineInstruction("not", 0'7111110'7711_enc,  // r = ~r
+  C(builder.DefineInstruction("not",     0'77710011111_enc,  // r = ~r
                               {"pred", "dst"}, {I::kAluZeroRhs, I::kAluNot}));
-  C(builder.DefineInstruction("shr", 0'7111111'7700_enc, {"pred", "dst"},
+  C(builder.DefineInstruction("shr",     0'77711101111_enc, {"pred", "dst"},
                               {I::kAluShr, I::kAluZeroRhs}));
-  C(builder.DefineInstruction("rombank", 0'7111111'7701_enc,  // select rom bank r
+  C(builder.DefineInstruction("rombank", 0'77710101111_enc,  // select rom bank r
                               {"pred", "lhs"}, {I::kRomBankSet}));
-  C(builder.DefineInstruction("push", 0'7111111'7710_enc,  // push
+  C(builder.DefineInstruction("push",    0'77710111111_enc,  // push
                               {"pred", "lhs"}, {I::kAluZeroRhs, I::kPushReg}));
-  C(builder.DefineInstruction("jump3", 0'71111110011_enc,  // jump rombank:r3:00
+  C(builder.DefineInstruction("jump3",   0'70011111111_enc,  // jump rombank:r3:00
                               {"pred"}, {I::kJump, I::kIndirect}));
-  C(builder.DefineInstruction("call3", 0'71111110111_enc,  // call rombank:r3:00
+  C(builder.DefineInstruction("call3",   0'71011111111_enc,  // call rombank:r3:00
                               {"pred"}, {I::kJump, I::kPushPc, I::kIndirect}));
-  C(builder.DefineInstruction("ret", 0'71111111011_enc,  // ret
+  C(builder.DefineInstruction("ret",     0'70111111111_enc,  // ret
                               {"pred"}, {I::kPopPc}));
-  C(builder.DefineInstruction(
-      "invflag", 0'71111111111_enc,  // flag = !flag
-      {"pred"},
-      {I::kAluZeroLhs, I::kFlagGet, I::kAluCarryIn, I::kAluNot, I::kFlagSet}));
+  C(builder.DefineInstruction("invflag", 0'71111111111_enc,  // flag = !flag
+                              {"pred"}, {I::kAluZeroLhs, I::kFlagGet, I::kAluCarryIn, I::kAluNot, I::kFlagSet}));
   // clang-format on
 #undef C
 }

@@ -466,8 +466,7 @@ TEST(MockTests, TestDerefMov) {
 TEST(MockTests, TestPredRombank) {
   auto state = std::make_unique<MockState>();
   EXPECT_CALL(*state, flag()).WillOnce(Return(false));
-  EXPECT_CALL(*state, read(kR1)).WillOnce(Return(7));
-  EXPECT_CALL(*state, read(kR2)).WillOnce(Return(3));
+  EXPECT_CALL(*state, read(kR2)).Times(2).WillRepeatedly(Return(3));
   EXPECT_CALL(*state, write(kR2, uint4_t{3}));
 
   EXPECT_CALL(*state, set_rombank(testing::_)).Times(0);
